@@ -21,6 +21,12 @@ public partial class App : Application
             _ = SelfTest.RunAsync(e.Args.Skip(1).ToArray()).ContinueWith(t => Dispatcher.Invoke(() => Shutdown(t.Result)));
             return;
         }
+        if (e.Args.Length > 0 && e.Args[0] == "--make-icon")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Shutdown(IconMaker.Run(e.Args.Skip(1).ToArray()));
+            return;
+        }
         if (e.Args.Length > 0 && e.Args[0] == "--snapshot")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

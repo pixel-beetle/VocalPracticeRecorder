@@ -47,6 +47,7 @@ public static class Library
         {
             case AlignMode.Auto: tags.Add($"自动对齐 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
             case AlignMode.Remembered: tags.Add($"沿用 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
+            case AlignMode.Calibrated: tags.Add($"设备延迟 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
             case AlignMode.Manual: tags.Add($"手动 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
         }
         bool trimmed = s.Edit.TrimStart > 0.05 || (s.Edit.TrimEnd > 0 && s.Edit.TrimEnd < s.Duration - 0.05);

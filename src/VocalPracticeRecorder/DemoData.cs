@@ -65,7 +65,7 @@ internal static class DemoData
                 var audio = await SessionAudio.LoadAsync(s);
                 s.Edit.MicChannel = ChannelSelector.Detect(audio.MicInterleaved, audio.MicChannels);
                 var est = SessionPostProcessor.AutoAlign(s, audio, null);
-                Log.Info($"demo {s.Id}: expected delay {delay * 1000:0}ms -> est {est.DelaySeconds * 1000:0.0}ms support={est.Confidence:0}% bands={est.BandsAgreeing} reliable={est.IsReliable} ch={s.Edit.MicChannel}");
+                Log.Info($"demo {s.Id}: expected delay {delay * 1000:0}ms -> est {est.DelaySeconds * 1000:0.0}ms strength={est.Confidence:0}% bands={est.BandsAgreeing} reliable={est.IsReliable} ch={s.Edit.MicChannel}");
                 if (t == 1) { s.Edit.TrimStart = 1.6; s.Edit.TrimEnd = 57.5; s.Starred = true; }
                 await SessionPostProcessor.MakeThumbnailAsync(s);
                 s.Save();

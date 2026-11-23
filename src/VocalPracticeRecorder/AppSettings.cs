@@ -18,6 +18,24 @@ public sealed class AppSettings
     public ExportSettings Export { get; set; } = new();
     /// <summary>Last manual vocal offset per "mic|output" device pair, used when auto alignment is impossible (headphones).</summary>
     public Dictionary<string, double> RememberedOffsets { get; set; } = [];
+    /// <summary>Recent confident bleed delays per device pair (ms); their median is the device round-trip latency.</summary>
+    public Dictionary<string, List<double>> MeasuredLatencies { get; set; } = [];
+
+    public DeviceCalibration CalibrationFor(string comboKey)
+    {
+        double? latency = MeasuredLatencies.TryGetValue(comboKey, out var list) && list.Count > 0
+            ? list.OrderBy(x => x).ElementAt(list.Count / 2) : null;
+        double? manual = RememberedOffsets.TryGetValue(comboKey, out var m) ? m : null;
+        return new DeviceCalibration(latency, manual);
+    }
+
+    public void RecordLatency(string comboKey, double ms)
+    {
+        if (!MeasuredLatencies.TryGetValue(comboKey, out var list)) MeasuredLatencies[comboKey] = list = [];
+        list.Add(Math.Round(ms, 1));
+        if (list.Count > 5) list.RemoveAt(0);
+        Save();
+    }
     public string? DataRoot { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]

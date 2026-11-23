@@ -24,7 +24,7 @@ public static partial class TitleCleaner
     private static partial Regex TagRegex();
 
     // Browser profile segment, e.g. " - 个人 - Microsoft Edge" or " - Work".
-    [GeneratedRegex(@"\s+-\s+(个人|個人|Personal|Profile\s*\d*|工作|Work)\s*$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\s+-\s+(个人|個人|Personal|Profile\s*\d*|工作|Work|用户配置\s*\d*|ユーザー\s*\d*|人员\s*\d*)\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex ProfileRegex();
 
     [GeneratedRegex(@"^\(\d+\)\s*")]

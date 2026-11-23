@@ -15,6 +15,8 @@ public enum AlignMode
     Remembered,
     /// <summary>User adjusted by hand.</summary>
     Manual,
+    /// <summary>Device round-trip latency measured in earlier speaker recordings (headphones).</summary>
+    Calibrated,
 }
 
 public sealed class TrackInfo

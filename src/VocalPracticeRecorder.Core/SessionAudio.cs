@@ -82,31 +82,45 @@ public static class SessionPostProcessor
     }
 
     /// <summary>Estimates vocal delay from backing bleed and writes the result into the edit state.</summary>
-    public static DelayEstimate AutoAlign(SessionInfo s, SessionAudio audio, double? rememberedOffsetMs)
+    public static DelayEstimate AutoAlign(SessionInfo s, SessionAudio audio, DeviceCalibration? calibration)
     {
         int total = (int)(s.Duration * SessionAudio.Rate);
         if (total <= 0) total = audio.BackingMono.Length;
         var back = SessionAudio.PlaceOnTimeline(audio.BackingMono, s.BackingPlacement, total);
         var mic = SessionAudio.PlaceOnTimeline(audio.MicMono(s.Edit.MicChannel), s.RawVocalPlacement, total);
         var est = DelayEstimator.Estimate(back, mic, SessionAudio.Rate);
-        ApplyEstimate(s.Edit, est, rememberedOffsetMs);
+        ApplyEstimate(s.Edit, est, calibration);
         return est;
     }
 
-    public static void ApplyEstimate(EditState e, DelayEstimate est, double? rememberedOffsetMs)
+    /// <summary>Tolerance for confirming a borderline estimate against the device's known latency.</summary>
+    public const double PriorToleranceMs = 3;
+
+    /// <summary>
+    /// Decision order: confident detection → borderline detection that matches the device's known latency →
+    /// user's hand-tuned headphone offset → device latency measured in earlier speaker recordings → nothing.
+    /// </summary>
+    public static void ApplyEstimate(EditState e, DelayEstimate est, DeviceCalibration? cal)
     {
-        e.AutoDelayMs = Math.Round(est.DelaySeconds * 1000, 1);
+        double ms = Math.Round(est.DelaySeconds * 1000, 1);
+        e.AutoDelayMs = ms;
         e.AutoConfidence = Math.Round(est.Confidence, 1);
-        e.AutoReliable = est.IsReliable;
-        if (est.IsReliable)
+        bool matchesPrior = cal?.MeasuredLatencyMs is { } prior && est.BandsAgreeing >= 1 && Math.Abs(ms - prior) <= PriorToleranceMs;
+        e.AutoReliable = est.IsReliable || matchesPrior;
+        if (e.AutoReliable)
         {
-            e.VocalOffsetMs = Math.Round(-est.DelaySeconds * 1000);
+            e.VocalOffsetMs = Math.Round(-ms, MidpointRounding.AwayFromZero);
             e.AlignMode = AlignMode.Auto;
         }
-        else if (rememberedOffsetMs.HasValue)
+        else if (cal?.ManualOffsetMs is { } manual)
         {
-            e.VocalOffsetMs = rememberedOffsetMs.Value;
+            e.VocalOffsetMs = manual;
             e.AlignMode = AlignMode.Remembered;
+        }
+        else if (cal?.MeasuredLatencyMs is { } latency)
+        {
+            e.VocalOffsetMs = Math.Round(-latency, MidpointRounding.AwayFromZero);
+            e.AlignMode = AlignMode.Calibrated;
         }
         else
         {
@@ -115,3 +129,8 @@ public static class SessionPostProcessor
         }
     }
 }
+
+/// <summary>What we know about a mic/output device pair from earlier sessions.</summary>
+/// <param name="MeasuredLatencyMs">Round-trip delay measured from speaker bleed (reliable detections only).</param>
+/// <param name="ManualOffsetMs">Vocal offset the user tuned by hand when no bleed was available (headphones).</param>
+public sealed record DeviceCalibration(double? MeasuredLatencyMs, double? ManualOffsetMs);

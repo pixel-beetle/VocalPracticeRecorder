@@ -278,9 +278,12 @@ public partial class MainWindow : Window
             await Task.Run(() =>
             {
                 s.Edit.MicChannel = ChannelSelector.Detect(audio.MicInterleaved, audio.MicChannels);
-                double? remembered = _settings.RememberedOffsets.TryGetValue(s.DeviceComboKey, out var v) ? v : null;
-                var est = SessionPostProcessor.AutoAlign(s, audio, remembered);
-                Log.Info($"post {s.Id}: channel={s.Edit.MicChannel} delay={est.DelaySeconds * 1000:0.0}ms z={est.Confidence:0.0} " +
+                var cal = _settings.CalibrationFor(s.DeviceComboKey);
+                var est = SessionPostProcessor.AutoAlign(s, audio, cal);
+                if (est.IsReliable) _settings.RecordLatency(s.DeviceComboKey, est.DelaySeconds * 1000);
+                Log.Info($"post {s.Id}: channel={s.Edit.MicChannel} delay={est.DelaySeconds * 1000:0.0}ms strength={est.Confidence:0} " +
+                         $"bands={est.BandsAgreeing}/3 windows={est.Windows} reliable={est.IsReliable} mode={s.Edit.AlignMode} " +
+                         $"offset={s.Edit.VocalOffsetMs:0}ms prior={cal.MeasuredLatencyMs?.ToString("0.0") ?? "-"} " +
                          $"offsets v={s.Video.StartOffset:0.000} m={s.Mic.StartOffset:0.000} b={s.Backing.StartOffset:0.000} frames={s.Video.FrameCount}");
             });
             await SessionPostProcessor.MakeThumbnailAsync(s);

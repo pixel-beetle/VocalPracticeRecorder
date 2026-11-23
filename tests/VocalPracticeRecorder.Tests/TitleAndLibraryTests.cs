@@ -9,6 +9,10 @@ public class TitleAndLibraryTests
     [InlineData("【ニコカラ】アイドル【off vocal】_哔哩哔哩_bilibili - Google Chrome", "アイドル")]
     [InlineData("(3) 【カラオケ】夜に駆ける / YOASOBI_哔哩哔哩_bilibili - Microsoft Edge", "夜に駆ける / YOASOBI")]
     [InlineData("ロキ [ニコカラHD]_哔哩哔哩_bilibili", "ロキ")]
+    // Real title from the first recording (Edge tab group + "用户配置 1" profile).
+    [InlineData("【中日字幕】ツキマシテハ from ゼンジン未到—Mrs.GREEN APPLE_哔哩哔哩_bilibili 和另外 14 个页面 - 用户配置 1 - Microsoft​ Edge",
+        "ツキマシテハ from ゼンジン未到—Mrs.GREEN APPLE")]
+    [InlineData("【ニコカラ】アイドル - 用户配置 1 - Microsoft​ Edge", "アイドル")]
     [InlineData("", TitleCleaner.Unknown)]
     [InlineData("哔哩哔哩 (゜-゜)つロ 干杯~-bilibili - Google Chrome", TitleCleaner.Unknown)]
     public void Cleans_browser_titles(string raw, string expected) =>

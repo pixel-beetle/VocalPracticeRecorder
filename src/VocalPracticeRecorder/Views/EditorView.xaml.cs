@@ -205,10 +205,10 @@ public partial class EditorView : UserControl
     private void OnAutoAlign(object sender, RoutedEventArgs e)
     {
         BeginEdit();
-        _settings.RememberedOffsets.TryGetValue(_s.DeviceComboKey, out var remembered);
-        var est = SessionPostProcessor.AutoAlign(_s, _audio,
-            _settings.RememberedOffsets.ContainsKey(_s.DeviceComboKey) ? remembered : null);
-        Log.Info($"auto-align {_s.Id}: delay={est.DelaySeconds * 1000:0.0}ms z={est.Confidence:0.0}");
+        var cal = _settings.CalibrationFor(_s.DeviceComboKey);
+        var est = SessionPostProcessor.AutoAlign(_s, _audio, cal);
+        Log.Info($"auto-align {_s.Id}: delay={est.DelaySeconds * 1000:0.0}ms strength={est.Confidence:0} bands={est.BandsAgreeing}/3 " +
+                 $"reliable={est.IsReliable} mode={_s.Edit.AlignMode} prior={cal.MeasuredLatencyMs?.ToString("0.0") ?? "-"}");
         MarkDirty();
         Focus();
     }
@@ -291,8 +291,9 @@ public partial class EditorView : UserControl
         string dir = e.VocalOffsetMs < 0 ? $"人声提前 {-e.VocalOffsetMs:0} ms" : e.VocalOffsetMs > 0 ? $"人声推后 {e.VocalOffsetMs:0} ms" : "未偏移";
         AlignText.Text = e.AlignMode switch
         {
-            AlignMode.Auto => $"✓ 外放模式：在麦克风里检测到伴奏，已自动对齐（{dir}，{e.AutoConfidence:0}% 分析段一致）。",
+            AlignMode.Auto => $"✓ 外放模式：在麦克风里检测到伴奏，已自动对齐（{dir}）。",
             AlignMode.Remembered => $"未检测到伴奏回声（可能戴了耳机），已沿用这组设备上次手调的值（{dir}）。边听边用 ← → 微调。",
+            AlignMode.Calibrated => $"未检测到伴奏回声（可能戴了耳机），已按之前外放录音测得的设备延迟对齐（{dir}）。不准的话用 ← → 微调。",
             AlignMode.Manual => $"手动调整：{dir}。" + (e.AutoReliable
                 ? $"（自动检测值 {-(e.AutoDelayMs ?? 0):+0;−0;0} ms）" : "调好的值会记住，下次用同样设备时自动套用。"),
             _ => "未检测到伴奏回声（可能戴了耳机）。边听边用 ← → 微调，调好的值会记住给下次用。",

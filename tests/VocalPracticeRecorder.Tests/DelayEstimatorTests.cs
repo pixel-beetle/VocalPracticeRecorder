@@ -159,15 +159,31 @@ public class DelayEstimatorTests
     }
 
     [Fact]
-    public void Apply_estimate_falls_back_to_remembered_offset()
+    public void Decision_order_auto_then_prior_then_manual_then_calibrated()
     {
         var e = new EditState();
-        SessionPostProcessor.ApplyEstimate(e, new DelayEstimate(0.2, 20, false), -120);
-        Assert.Equal(AlignMode.Remembered, e.AlignMode);
-        Assert.Equal(-120, e.VocalOffsetMs);
+        // Confident detection wins over everything.
+        SessionPostProcessor.ApplyEstimate(e, new DelayEstimate(0.083, 90, true, 5, 3), new DeviceCalibration(51, -120));
+        Assert.Equal((AlignMode.Auto, -83.0), (e.AlignMode, e.VocalOffsetMs));
 
-        SessionPostProcessor.ApplyEstimate(e, new DelayEstimate(0.083, 100, true), -120);
-        Assert.Equal(AlignMode.Auto, e.AlignMode);
-        Assert.Equal(-83, e.VocalOffsetMs);
+        // Borderline detection confirmed by the device's known latency (±3 ms) is accepted.
+        SessionPostProcessor.ApplyEstimate(e, new DelayEstimate(0.0525, 60, false, 3, 1), new DeviceCalibration(51.3, -120));
+        Assert.Equal((AlignMode.Auto, -53.0), (e.AlignMode, e.VocalOffsetMs));
+        Assert.True(e.AutoReliable);
+
+        // Borderline detection far from the known latency is not trusted; hand-tuned headphone value wins.
+        SessionPostProcessor.ApplyEstimate(e, new DelayEstimate(0.200, 60, false, 3, 1), new DeviceCalibration(51.3, -120));
+        Assert.Equal((AlignMode.Remembered, -120.0), (e.AlignMode, e.VocalOffsetMs));
+
+        // No hand-tuned value: fall back to the latency measured in earlier speaker recordings.
+        SessionPostProcessor.ApplyEstimate(e, new DelayEstimate(0.200, 20, false, 3, 0), new DeviceCalibration(51.3, null));
+        Assert.Equal((AlignMode.Calibrated, -51.0), (e.AlignMode, e.VocalOffsetMs));
+
+        // A prior match needs at least one agreeing band (pure noise must not snap to the prior).
+        SessionPostProcessor.ApplyEstimate(e, new DelayEstimate(0.0512, 10, false, 3, 0), new DeviceCalibration(51.3, null));
+        Assert.Equal(AlignMode.Calibrated, e.AlignMode);
+
+        SessionPostProcessor.ApplyEstimate(e, new DelayEstimate(0.2, 20, false), null);
+        Assert.Equal((AlignMode.None, 0.0), (e.AlignMode, e.VocalOffsetMs));
     }
 }

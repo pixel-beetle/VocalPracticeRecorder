@@ -7,11 +7,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyTitle>练唱录制</AssemblyTitle>
     <Product>练唱录制 VocalPracticeRecorder</Product>
     <Version>0.1.0</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="app.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\VocalPracticeRecorder.Core\VocalPracticeRecorder.Core.csproj" />
