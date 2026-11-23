@@ -37,6 +37,8 @@ public sealed class AppSettings
         Save();
     }
     public string? DataRoot { get; set; }
+    /// <summary>Optional separate export folder; null = &lt;Root&gt;\Exports.</summary>
+    public string? ExportDirOverride { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
     public PixelRect? Region
@@ -51,9 +53,10 @@ public sealed class AppSettings
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VocalPracticeRecorder", "settings.json");
 
-    public string Root => DataRoot ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "练唱录制");
-    public string RecordingsDir => Path.Combine(Root, "Recordings");
-    public string ExportsDir => Path.Combine(Root, "Exports");
+    public static string DefaultRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "练唱录制");
+    [System.Text.Json.Serialization.JsonIgnore] public string Root => DataRoot ?? DefaultRoot;
+    [System.Text.Json.Serialization.JsonIgnore] public string RecordingsDir => Path.Combine(Root, "Recordings");
+    [System.Text.Json.Serialization.JsonIgnore] public string ExportsDir => ExportDirOverride ?? Path.Combine(Root, "Exports");
 
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 

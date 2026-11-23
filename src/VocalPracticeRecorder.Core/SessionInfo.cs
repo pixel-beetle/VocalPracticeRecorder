@@ -57,8 +57,15 @@ public sealed class EditState
     public double? AutoConfidence { get; set; }
     /// <summary>True when the last auto alignment found backing bleed in the mic (speaker mode).</summary>
     public bool AutoReliable { get; set; }
+    /// <summary>Deleted ranges on the timeline (sorted, non-overlapping, frame-snapped).</summary>
+    public List<TimeRange> Cuts { get; set; } = [];
 
-    public EditState Clone() => (EditState)MemberwiseClone();
+    public EditState Clone()
+    {
+        var c = (EditState)MemberwiseClone();
+        c.Cuts = [.. Cuts];
+        return c;
+    }
 }
 
 public sealed class ExportRecord
@@ -88,6 +95,13 @@ public sealed class SessionInfo
     public List<ExportRecord> Exports { get; set; } = [];
 
     [JsonIgnore] public string Folder { get; set; } = "";
+    /// <summary>
+    /// JSON file of this take inside <see cref="Folder"/>. A recording folder holds the media once;
+    /// takes split from it are extra <c>take-N.json</c> files sharing that media.
+    /// </summary>
+    [JsonIgnore] public string JsonFile { get; set; } = FileName;
+    [JsonIgnore] public bool IsPrimaryTake => JsonFile == FileName;
+    [JsonIgnore] public string ThumbFile => IsPrimaryTake ? "thumb.jpg" : $"thumb-{System.IO.Path.GetFileNameWithoutExtension(JsonFile)}.jpg";
 
     public double Duration => Video.Duration;
 
@@ -109,18 +123,49 @@ public sealed class SessionInfo
 
     public void Save()
     {
-        var path = System.IO.Path.Combine(Folder, FileName);
+        var path = System.IO.Path.Combine(Folder, JsonFile);
         var tmp = path + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(this, JsonOptions));
         File.Move(tmp, path, overwrite: true);
     }
 
-    public static SessionInfo Load(string folder)
+    public static SessionInfo Load(string folder, string jsonFile = FileName)
     {
-        var json = File.ReadAllText(System.IO.Path.Combine(folder, FileName));
+        var json = File.ReadAllText(System.IO.Path.Combine(folder, jsonFile));
         var s = JsonSerializer.Deserialize<SessionInfo>(json, JsonOptions) ?? throw new InvalidDataException("Empty session file");
         s.Folder = folder;
+        s.JsonFile = jsonFile;
         return s;
+    }
+
+    /// <summary>Is this a take file name (session.json or take-N.json)?</summary>
+    public static bool IsTakeFile(string fileName) =>
+        fileName.Equals(FileName, StringComparison.OrdinalIgnoreCase) ||
+        (fileName.StartsWith("take-", StringComparison.OrdinalIgnoreCase) && fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Splits this take at timeline time <paramref name="t"/>: this take keeps everything before t and a new
+    /// take (same media, new JSON file in the same folder) gets everything after. Neither file is saved here.
+    /// </summary>
+    public SessionInfo SplitAt(double t)
+    {
+        double at = EditTimeline.Snap(t, Video.Fps);
+        if (at <= Edit.TrimStart + 0.5 || at >= EffectiveTrimEnd - 0.5)
+            throw new InvalidOperationException("拆分点离开头或结尾太近（至少要留 0.5 秒）。");
+        int n = 2;
+        while (File.Exists(System.IO.Path.Combine(Folder, $"take-{n}.json"))) n++;
+        var json = JsonSerializer.Serialize(this, JsonOptions);
+        var second = JsonSerializer.Deserialize<SessionInfo>(json, JsonOptions)!;
+        second.Folder = Folder;
+        second.JsonFile = $"take-{n}.json";
+        second.Id = $"{System.IO.Path.GetFileName(Folder)}-{n}";
+        second.CreatedAt = CreatedAt.AddSeconds(at); // keeps chronological take order
+        second.Starred = false;
+        second.Exports = [];
+        second.Edit.TrimStart = at;
+        second.Edit.TrimEnd = Edit.TrimEnd;
+        Edit.TrimEnd = at;
+        return second;
     }
 
     public string PathOf(string file) => System.IO.Path.Combine(Folder, file);

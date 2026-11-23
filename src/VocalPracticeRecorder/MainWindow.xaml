@@ -22,6 +22,11 @@
             <TextBlock x:Name="EmptyHint" DockPanel.Dock="Top" Margin="14,8" TextWrapping="Wrap"
                        Foreground="{StaticResource SubtleTextBrush}"
                        Text="还没有录音。点「新录音」，框选 B 站视频区域就可以开始。" />
+            <DockPanel DockPanel.Dock="Bottom" Margin="12,4,12,10">
+                <Button Content="⚙ 设置" Click="OnSettings" ToolTip="录音库 / 导出位置、录制画质" />
+                <TextBlock x:Name="RootHint" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{StaticResource SubtleTextBrush}" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
             <ListBox x:Name="TakesList" ItemsSource="{Binding Source={StaticResource TakesView}}" BorderThickness="0"
                      Background="Transparent" SelectionChanged="OnTakeSelected" Margin="4,0,4,8"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizingWhenGrouping="True">

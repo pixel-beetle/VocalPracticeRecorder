@@ -61,6 +61,8 @@ public partial class EditorView : UserControl
         Timeline.SeekRequested += Seek;
         Timeline.EditStarting += BeginEdit;
         Timeline.TrimChanged += MarkDirty;
+        Timeline.SelectionChanged += UpdateSelectionUi;
+        Timeline.RestoreCutRequested += RestoreCut;
 
         _engine = new PlaybackEngine(s, audio);
         _engine.Ended += () => Dispatcher.BeginInvoke(OnEnded);
@@ -107,7 +109,7 @@ public partial class EditorView : UserControl
             PlayButton.Content = "▶ 播放";
             return;
         }
-        double from = Timeline.Playhead;
+        double from = Timeline.Selection?.Start ?? Timeline.Playhead;
         if (from < _s.Edit.TrimStart || from >= _s.EffectiveTrimEnd - 0.05) from = _s.Edit.TrimStart;
         _engine.Play(from, _s.EffectiveTrimEnd);
         Video.Position = TimeSpan.FromSeconds(from);
@@ -124,6 +126,8 @@ public partial class EditorView : UserControl
         Timeline.Playhead = _engine.Position;
     }
 
+    private long _lastJumps;
+
     private void OnUiTick(object? sender, EventArgs e)
     {
         if (!_engine.IsPlaying) return;
@@ -131,7 +135,14 @@ public partial class EditorView : UserControl
         Timeline.Playhead = pos;
         Timeline.EnsureVisible(pos);
         TimeText.Text = Library.FormatTimecode(pos);
-        if (_videoPlaying && ++_syncCounter % 15 == 0)
+        long jumps = _engine.JumpCount;
+        if (_videoPlaying && jumps != _lastJumps)
+        {
+            // Playback skipped a deleted section: move the picture with it immediately.
+            _lastJumps = jumps;
+            Video.Position = TimeSpan.FromSeconds(pos);
+        }
+        else if (_videoPlaying && ++_syncCounter % 15 == 0)
         {
             double drift = Video.Position.TotalSeconds - pos;
             if (Math.Abs(drift) > 0.12) Video.Position = TimeSpan.FromSeconds(pos);
@@ -247,9 +258,66 @@ public partial class EditorView : UserControl
         BeginEdit();
         _s.Edit.TrimStart = 0;
         _s.Edit.TrimEnd = 0;
+        _s.Edit.Cuts = [];
+        Timeline.Selection = null;
         Timeline.ZoomToFit();
         MarkDirty();
         Focus();
+    }
+
+    // ---------- Delete sections / split takes ----------
+
+    private void UpdateSelectionUi()
+    {
+        DeleteSelButton.IsEnabled = Timeline.Selection != null;
+        UpdateTexts();
+    }
+
+    private void DeleteSelection()
+    {
+        if (Timeline.Selection is not { } sel || sel.Length <= 0) return;
+        BeginEdit();
+        _s.Edit.Cuts = EditTimeline.AddCut(_s.Edit.Cuts, sel, _s.Video.Fps);
+        Timeline.Selection = null;
+        Seek(sel.Start);
+        MarkDirty();
+    }
+
+    private void RestoreCut(double t)
+    {
+        if (EditTimeline.CutAt(_s.Edit.Cuts, t) == null) return;
+        BeginEdit();
+        _s.Edit.Cuts = EditTimeline.RemoveCutAt(_s.Edit.Cuts, t);
+        MarkDirty();
+    }
+
+    private void OnDeleteSelection(object sender, RoutedEventArgs e) { DeleteSelection(); Focus(); }
+
+    private async void OnSplit(object sender, RoutedEventArgs e) { await SplitAsync(); Focus(); }
+
+    private async Task SplitAsync()
+    {
+        if (_engine.IsPlaying) TogglePlay();
+        SessionInfo second;
+        try
+        {
+            second = _s.SplitAt(Timeline.Playhead);
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(Window.GetWindow(this), ex.Message + "\n\n先把播放头移到要拆开的位置（两遍之间），再点「拆分」。", "无法拆分",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        _undo.Clear(); // the split itself is a file operation; undoing trims across it would desync the two takes
+        second.Save();
+        _s.Save();
+        await SessionPostProcessor.MakeThumbnailAsync(second);
+        await SessionPostProcessor.MakeThumbnailAsync(_s);
+        Log.Info($"split {_s.Id} at {second.Edit.TrimStart:0.00}s -> {second.Id}");
+        Timeline.Refresh();
+        UpdateTexts();
+        SessionChanged?.Invoke(_s, true);
     }
 
     private void OnSliderDragStarted(object sender, DragStartedEventArgs e) => BeginEdit();
@@ -286,8 +354,10 @@ public partial class EditorView : UserControl
         VocalGainText.Text = $"{e.VocalGainDb:+0;−0;0} dB";
         BackingGainText.Text = $"{e.BackingGainDb:+0;−0;0} dB";
         BackingGain.IsEnabled = !e.BackingMuted;
-        double len = _s.EffectiveTrimEnd - e.TrimStart;
-        TrimText.Text = $"{Library.FormatTimecode(e.TrimStart)} → {Library.FormatTimecode(_s.EffectiveTrimEnd)}（{Library.FormatDuration(len)}）";
+        double len = EditTimeline.OutputDuration(_s);
+        string cuts = e.Cuts.Count > 0 ? $"，删除 {e.Cuts.Count} 段" : "";
+        string sel = Timeline.Selection is { } r ? $"   ·   选区 {Library.FormatTimecode(r.Start)} – {Library.FormatTimecode(r.End)}（{r.Length:0.0} 秒，按 Delete 删除）" : "";
+        TrimText.Text = $"成品 {Library.FormatDuration(len)}   ·   {Library.FormatTimecode(e.TrimStart)} → {Library.FormatTimecode(_s.EffectiveTrimEnd)}{cuts}{sel}";
         string dir = e.VocalOffsetMs < 0 ? $"人声提前 {-e.VocalOffsetMs:0} ms" : e.VocalOffsetMs > 0 ? $"人声推后 {e.VocalOffsetMs:0} ms" : "未偏移";
         AlignText.Text = e.AlignMode switch
         {
@@ -431,6 +501,9 @@ public partial class EditorView : UserControl
             case Key.End: Seek(Math.Max(_s.Edit.TrimStart, _s.EffectiveTrimEnd - 3)); return true;
             case Key.Z when ctrl: Undo(); return true;
             case Key.E when ctrl: _ = ExportAsync(); return true;
+            case Key.Delete or Key.Back: DeleteSelection(); return true;
+            case Key.Escape when Timeline.Selection != null: Timeline.Selection = null; return true;
+            case Key.S when !ctrl: _ = SplitAsync(); return true;
         }
         return false;
     }

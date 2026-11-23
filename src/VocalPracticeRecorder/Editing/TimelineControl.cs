@@ -63,18 +63,48 @@ public sealed class TimelineControl : FrameworkElement
 
     private static T Frozen<T>(T f) where T : Freezable { f.Freeze(); return f; }
 
+    private static readonly Brush SelBrush = Frozen(new SolidColorBrush(Color.FromArgb(55, 255, 255, 255)));
+    private static readonly Pen SelPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(200, 255, 255, 255))), 1));
+    private static readonly Brush CutBrush = Frozen(MakeCutBrush());
+    private static readonly Pen CutEdgePen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0xE5, 0x48, 0x4D))), 1.5));
+
+    /// <summary>Dark red with diagonal hatching: reads as "removed" even in a small strip.</summary>
+    private static Brush MakeCutBrush()
+    {
+        var g = new DrawingGroup();
+        using (var dc = g.Open())
+        {
+            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(235, 0x3A, 0x10, 0x14)), null, new Rect(0, 0, 10, 10));
+            dc.DrawLine(new Pen(new SolidColorBrush(Color.FromArgb(160, 0xE5, 0x48, 0x4D)), 1.5), new Point(0, 10), new Point(10, 0));
+        }
+        return new DrawingBrush(g) { TileMode = TileMode.Tile, Viewport = new Rect(0, 0, 10, 10), ViewportUnits = BrushMappingMode.Absolute };
+    }
+
     private SessionInfo? _s;
     private Peaks? _vocal, _backing;
     private double _viewStart, _viewEnd = 1;
     private double _playhead;
     private DrawingGroup? _cache;
-    private enum Drag { None, Seek, In, Out }
+    private enum Drag { None, Seek, In, Out, Select }
     private Drag _drag;
+    private double _anchor;
+    private double _downX;
+    private TimeRange? _selection;
 
     public event Action<double>? SeekRequested;
     /// <summary>Raised when a trim drag starts (for undo snapshots).</summary>
     public event Action? EditStarting;
     public event Action? TrimChanged;
+    public event Action? SelectionChanged;
+    /// <summary>Right-click on a deleted section: restore it.</summary>
+    public event Action<double>? RestoreCutRequested;
+
+    /// <summary>Current range selection on the timeline (drag on the waveforms), or null.</summary>
+    public TimeRange? Selection
+    {
+        get => _selection;
+        set { _selection = value; InvalidateVisual(); SelectionChanged?.Invoke(); }
+    }
 
     public TimelineControl()
     {
@@ -135,6 +165,18 @@ public sealed class TimelineControl : FrameworkElement
         _cache ??= BuildCache(w, h);
         dc.DrawDrawing(_cache);
 
+        // Selection
+        if (_selection is { } sel)
+        {
+            double x0 = Math.Max(0, X(sel.Start)), x1 = Math.Min(w, X(sel.End));
+            if (x1 > x0)
+            {
+                dc.DrawRectangle(SelBrush, null, new Rect(x0, RulerH, x1 - x0, h - RulerH));
+                dc.DrawLine(SelPen, new Point(x0, RulerH), new Point(x0, h));
+                dc.DrawLine(SelPen, new Point(x1, RulerH), new Point(x1, h));
+            }
+        }
+
         // Playhead
         double px = X(_playhead);
         if (px >= 0 && px <= w) dc.DrawLine(PlayheadPen, new Point(px, 0), new Point(px, h));
@@ -158,8 +200,19 @@ public sealed class TimelineControl : FrameworkElement
             if (_backing != null) DrawWave(dc, _backing, s.BackingPlacement, backLane, BackPen, w);
 
             double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-            DrawLaneLabel(dc, Label("人声", dpi), new Point(6, RulerH + 3));
-            DrawLaneLabel(dc, Label(s.Edit.BackingMuted ? "伴奏（静音）" : "伴奏", dpi), new Point(6, RulerH + laneH + 3));
+
+            // Deleted sections: hatched red over both lanes, with a label when wide enough.
+            foreach (var c in s.Edit.Cuts)
+            {
+                double x0 = Math.Max(0, X(c.Start)), x1 = Math.Min(w, X(c.End));
+                if (x1 <= x0) continue;
+                dc.DrawRectangle(CutBrush, null, new Rect(x0, RulerH, x1 - x0, h - RulerH));
+                dc.DrawLine(CutEdgePen, new Point(x0, RulerH), new Point(x0, h));
+                dc.DrawLine(CutEdgePen, new Point(x1, RulerH), new Point(x1, h));
+                var label = Label("已删除", dpi);
+                if (x1 - x0 > label.Width + 10)
+                    DrawLaneLabel(dc, label, new Point((x0 + x1 - label.Width) / 2, RulerH + (h - RulerH - label.Height) / 2));
+            }
 
             // Trim shading + handles
             double a = X(s.Edit.TrimStart), b = X(s.EffectiveTrimEnd);
@@ -167,6 +220,10 @@ public sealed class TimelineControl : FrameworkElement
             if (b < w) dc.DrawRectangle(OutBrush, null, new Rect(Math.Max(0, b), RulerH, w - Math.Max(0, b), h - RulerH));
             DrawHandle(dc, a, h, true);
             DrawHandle(dc, b, h, false);
+
+            // Lane labels last so no overlay ever covers them.
+            DrawLaneLabel(dc, Label("人声", dpi), new Point(6, RulerH + 3));
+            DrawLaneLabel(dc, Label(s.Edit.BackingMuted ? "伴奏（静音）" : "伴奏", dpi), new Point(6, RulerH + laneH + 3));
         }
         g.Freeze();
         return g;
@@ -251,16 +308,32 @@ public sealed class TimelineControl : FrameworkElement
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
-        if (_s == null || e.ChangedButton != MouseButton.Left) return;
+        if (_s == null) return;
         Focus();
         var p = e.GetPosition(this);
+        if (e.ChangedButton == MouseButton.Right)
+        {
+            double tr = T(p.X);
+            if (p.Y > RulerH && EditTimeline.CutAt(_s.Edit.Cuts, tr) != null) RestoreCutRequested?.Invoke(tr);
+            e.Handled = true;
+            return;
+        }
+        if (e.ChangedButton != MouseButton.Left) return;
         double a = X(_s.Edit.TrimStart), b = X(_s.EffectiveTrimEnd);
         if (Math.Abs(p.X - a) <= HandleHit) _drag = Drag.In;
         else if (Math.Abs(p.X - b) <= HandleHit) _drag = Drag.Out;
-        else _drag = Drag.Seek;
-        if (_drag != Drag.Seek) EditStarting?.Invoke();
+        else if (p.Y > RulerH) _drag = Drag.Select; // waveform area: click = seek, drag = select
+        else _drag = Drag.Seek;                    // ruler: scrub
+        if (_drag is Drag.In or Drag.Out) EditStarting?.Invoke();
+        _anchor = Math.Clamp(T(p.X), 0, Duration);
+        _downX = p.X;
         CaptureMouse();
-        ApplyDrag(p.X);
+        if (_drag == Drag.Select)
+        {
+            if (_selection != null) Selection = null;
+            SeekRequested?.Invoke(_anchor);
+        }
+        else ApplyDrag(p.X);
         e.Handled = true;
     }
 
@@ -276,7 +349,10 @@ public sealed class TimelineControl : FrameworkElement
         }
         double a = X(_s.Edit.TrimStart), b = X(_s.EffectiveTrimEnd);
         Cursor = Math.Abs(p.X - a) <= HandleHit || Math.Abs(p.X - b) <= HandleHit ? Cursors.SizeWE : Cursors.IBeam;
+        ToolTip = p.Y > RulerH && EditTimeline.CutAt(_s.Edit.Cuts, T(p.X)) != null ? "已删除的片段 · 右键恢复" : HelpTip;
     }
+
+    private const string HelpTip = "点击定位 · 在波形上拖动选区（Delete 删除）· 拖黄色把手裁剪头尾 · Ctrl+滚轮缩放 · 滚轮平移 · 右键红色片段恢复";
 
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
@@ -292,6 +368,13 @@ public sealed class TimelineControl : FrameworkElement
         double t = Math.Clamp(T(x), 0, Duration);
         switch (_drag)
         {
+            case Drag.Select:
+                if (Math.Abs(x - _downX) >= 4)
+                {
+                    var r = new TimeRange(EditTimeline.Snap(Math.Min(_anchor, t), s.Video.Fps), EditTimeline.Snap(Math.Max(_anchor, t), s.Video.Fps));
+                    Selection = r.Length > 0 ? r : null;
+                }
+                break;
             case Drag.Seek:
                 SeekRequested?.Invoke(t);
                 break;

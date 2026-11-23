@@ -73,14 +73,17 @@ public static class ExportBuilder
 
     public static string Volume(double db) => $"volume={F(db)}dB";
 
+    /// <summary>Fade applied at internal joins so deleting a section never clicks.</summary>
+    public const double JoinFadeSeconds = 0.005;
+
     /// <summary>Returns the full FFmpeg argument list (without the executable).</summary>
     public static List<string> BuildArgs(SessionInfo s, ExportKind kind, string outputPath, ExportSettings? settings = null)
     {
         settings ??= new ExportSettings();
         var e = s.Edit;
-        double a = Math.Max(0, e.TrimStart);
-        double b = s.EffectiveTrimEnd;
-        if (b - a < 0.1) throw new InvalidOperationException("裁剪后的长度太短。");
+        var segs = EditTimeline.KeptSegments(s);
+        if (segs.Count == 0 || segs.Sum(x => x.Length) < 0.1) throw new InvalidOperationException("剪辑后的长度太短。");
+        int n = segs.Count;
 
         var args = new List<string> { "-hide_banner", "-y", "-nostdin" };
         int idx = 0;
@@ -102,21 +105,50 @@ public static class ExportBuilder
 
         var fg = new List<string>();
         string layout = kind == ExportKind.DryVocal ? "mono" : "stereo";
-        fg.Add($"[{micIdx}:a]{MicPan(e.MicChannel, s.Mic.Channels, layout)},aresample=48000,{PlaceAndTrim(s.VocalPlacement, a, b)},{Volume(e.VocalGainDb)}[voc]");
-        string limiter = $"alimiter=limit={F(settings.LimiterCeiling)}:level=false:latency=true";
+        string Labels(string p) => string.Concat(Enumerable.Range(0, n).Select(i => $"[{p}{i}]"));
+
+        // Shared pre-processing, then one branch per kept segment.
+        fg.Add($"[{micIdx}:a]{MicPan(e.MicChannel, s.Mic.Channels, layout)},aresample=48000,{Volume(e.VocalGainDb)},asplit={n}{Labels("vi")}");
         if (useBacking)
+            fg.Add($"[{backIdx}:a]aformat=channel_layouts=stereo,aresample=48000,{Volume(e.BackingGainDb)},asplit={n}{Labels("bi")}");
+        if (videoIdx >= 0)
+            fg.Add($"[{videoIdx}:v]split={n}{Labels("xi")}");
+
+        int fps = Math.Max(1, s.Video.Fps);
+        for (int i = 0; i < n; i++)
         {
-            fg.Add($"[{backIdx}:a]aformat=channel_layouts=stereo,aresample=48000,{PlaceAndTrim(s.BackingPlacement, a, b)},{Volume(e.BackingGainDb)}[bak]");
-            fg.Add($"[voc][bak]amix=inputs=2:duration=longest:normalize=0,{limiter}[aout]");
+            var (a, b) = (segs[i].Start, segs[i].End);
+            double len = b - a;
+            var fades = new List<string>();
+            if (i > 0) fades.Add($"afade=t=in:d={F(JoinFadeSeconds)}");
+            if (i < n - 1) fades.Add($"afade=t=out:st={F(len - JoinFadeSeconds)}:d={F(JoinFadeSeconds)}");
+            string fade = fades.Count > 0 ? "," + string.Join(",", fades) : "";
+            fg.Add($"[vi{i}]{PlaceAndTrim(s.VocalPlacement, a, b)}[vs{i}]");
+            if (useBacking)
+            {
+                fg.Add($"[bi{i}]{PlaceAndTrim(s.BackingPlacement, a, b)}[bs{i}]");
+                fg.Add($"[vs{i}][bs{i}]amix=inputs=2:duration=longest:normalize=0{fade}[as{i}]");
+            }
+            else fg.Add($"[vs{i}]anull{fade}[as{i}]");
+            if (videoIdx >= 0)
+            {
+                // Frame indices are exact because every boundary is snapped to the frame grid.
+                long f0 = (long)Math.Round(a * fps), f1 = (long)Math.Round(b * fps);
+                fg.Add($"[xi{i}]trim=start_frame={f0}:end_frame={f1},setpts=PTS-STARTPTS[xs{i}]");
+            }
+        }
+
+        string limiter = $"alimiter=limit={F(settings.LimiterCeiling)}:level=false:latency=true";
+        if (videoIdx >= 0)
+        {
+            string pairs = string.Concat(Enumerable.Range(0, n).Select(i => $"[xs{i}][as{i}]"));
+            fg.Add($"{pairs}concat=n={n}:v=1:a=1[vout][acat]");
         }
         else
         {
-            fg.Add($"[voc]{limiter}[aout]");
+            fg.Add($"{Labels("as")}concat=n={n}:v=0:a=1[acat]");
         }
-        if (videoIdx >= 0)
-        {
-            fg.Add($"[{videoIdx}:v]trim=start={F(a)}:end={F(b)},setpts=PTS-STARTPTS[vout]");
-        }
+        fg.Add($"[acat]{limiter}[aout]");
         args.AddRange(["-filter_complex", string.Join(";", fg)]);
 
         if (videoIdx >= 0)

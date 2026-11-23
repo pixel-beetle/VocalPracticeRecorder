@@ -72,11 +72,11 @@ public static class SessionPostProcessor
 
     public static async Task MakeThumbnailAsync(SessionInfo s, CancellationToken ct = default)
     {
-        double at = Math.Max(0, s.Duration * 0.4);
+        double at = Math.Max(0, s.Edit.TrimStart + (s.EffectiveTrimEnd - s.Edit.TrimStart) * 0.4);
         try
         {
             await Ffmpeg.RunAsync(["-hide_banner", "-y", "-nostdin", "-ss", at.ToString("0.###", CultureInfo.InvariantCulture),
-                "-i", s.PathOf(s.Video.File), "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "4", s.PathOf("thumb.jpg")], null, ct).ConfigureAwait(false);
+                "-i", s.PathOf(s.Video.File), "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "4", s.PathOf(s.ThumbFile)], null, ct).ConfigureAwait(false);
         }
         catch { /* thumbnail is cosmetic */ }
     }

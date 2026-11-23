@@ -30,9 +30,13 @@ public static class Library
         if (!Directory.Exists(recordingsRoot)) return list;
         foreach (var dir in Directory.EnumerateDirectories(recordingsRoot))
         {
-            if (!File.Exists(Path.Combine(dir, SessionInfo.FileName))) continue;
-            try { list.Add(SessionInfo.Load(dir)); }
-            catch { /* skip corrupt sessions */ }
+            foreach (var file in Directory.EnumerateFiles(dir, "*.json"))
+            {
+                var name = Path.GetFileName(file);
+                if (!SessionInfo.IsTakeFile(name)) continue;
+                try { list.Add(SessionInfo.Load(dir, name)); }
+                catch { /* skip corrupt sessions */ }
+            }
         }
         return list;
     }
@@ -50,8 +54,8 @@ public static class Library
             case AlignMode.Calibrated: tags.Add($"设备延迟 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
             case AlignMode.Manual: tags.Add($"手动 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
         }
-        bool trimmed = s.Edit.TrimStart > 0.05 || (s.Edit.TrimEnd > 0 && s.Edit.TrimEnd < s.Duration - 0.05);
-        if (trimmed) tags.Add($"已剪 → {FormatDuration(s.EffectiveTrimEnd - s.Edit.TrimStart)}");
+        bool trimmed = s.Edit.TrimStart > 0.05 || (s.Edit.TrimEnd > 0 && s.Edit.TrimEnd < s.Duration - 0.05) || s.Edit.Cuts.Count > 0;
+        if (trimmed) tags.Add($"已剪 → {FormatDuration(EditTimeline.OutputDuration(s))}");
         if (s.Exports.Count > 0) tags.Add("已导出");
         if (s.Incomplete) tags.Add("未完成");
         return tags;

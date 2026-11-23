@@ -37,8 +37,14 @@ internal static class Snapshot
         var list = (ListBox)win.FindName("TakesList");
         if (list.Items.Count > 0)
         {
-            list.SelectedIndex = list.Items.Count - 1;
+            var withCuts = list.Items.Cast<TakeItem>().FirstOrDefault(t => t.Session.Edit.Cuts.Count > 0);
+            list.SelectedItem = withCuts ?? list.Items[^1];
             await Task.Delay(2500);
+            if (win.FindName("EditorHost") is ContentControl { Content: EditorView ed0 } && ed0.FindName("Timeline") is Editing.TimelineControl tl)
+            {
+                tl.Selection = new Core.TimeRange(30, 34.5);
+                await Task.Delay(200);
+            }
             Render(win, Path.Combine(outDir, "2-editor.png"), 1);
             // 2x close-ups of dense areas, cropped from a 2x render of the whole window.
             var rootEl = (FrameworkElement)win.Content;
@@ -66,6 +72,16 @@ internal static class Snapshot
             root.UpdateLayout();
             RenderElement(root, Path.Combine(outDir, "9-recording-bar-2x.png"));
         }
+
+        // Settings window (shown off-screen).
+        var settingsWin = new SettingsWindow(settings)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -30000, Top = -30000, ShowActivated = false,
+        };
+        settingsWin.Show();
+        await Task.Delay(500);
+        RenderElement((FrameworkElement)settingsWin.Content, Path.Combine(outDir, "10-settings-2x.png"));
+        settingsWin.Close();
 
         win.Close();
         return 0;

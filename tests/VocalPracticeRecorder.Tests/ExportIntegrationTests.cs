@@ -15,7 +15,7 @@ public class ExportIntegrationTests : IDisposable
     public ExportIntegrationTests() => Directory.CreateDirectory(_dir);
     public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
 
-    private static void WriteWav(string path, int channels, double seconds, params (int Channel, double At)[] clicks)
+    internal static void WriteWav(string path, int channels, double seconds, params (int Channel, double At)[] clicks)
     {
         const int rate = 48000;
         int frames = (int)(seconds * rate);

@@ -27,7 +27,7 @@ public sealed class TakeItem
     {
         get
         {
-            var p = Session.PathOf("thumb.jpg");
+            var p = Session.PathOf(Session.ThumbFile);
             if (!File.Exists(p)) return null;
             try
             {
@@ -82,10 +82,31 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         UpdateRegionText();
-        QualityText.Text = $"视频：最高 {_settings.MaxHeight}p · {_settings.Fps} fps（看清歌词足够，体积小）\n音频：录制时无损，导出为 AAC / MP3 320 kbps";
+        UpdateQualityText();
         LoadDevices();
         RefreshLibrary();
         _meterTimer.Start();
+    }
+
+    private void UpdateQualityText()
+    {
+        QualityText.Text = $"视频：最高 {_settings.MaxHeight}p · {_settings.Fps} fps（看清歌词足够，体积小）\n音频：录制时无损，导出为 AAC / MP3 320 kbps";
+        RootHint.Text = _settings.Root;
+        RootHint.ToolTip = $"录音库：{_settings.RecordingsDir}\n导出：{_settings.ExportsDir}";
+    }
+
+    private void OnSettings(object sender, RoutedEventArgs e)
+    {
+        if (_controller.IsRecording) return;
+        // Media files must not be locked by the editor while folders may be moved.
+        string? reopen = _editor?.Session.Id;
+        CloseEditor();
+        var dlg = new SettingsWindow(_settings) { Owner = this };
+        dlg.ShowDialog();
+        UpdateQualityText();
+        UpdateRegionText();
+        RefreshLibrary(select: dlg.LibraryChanged ? null : reopen);
+        if (_editor == null) ShowRecordPanel();
     }
 
     // ---------------- Devices ----------------
@@ -445,8 +466,18 @@ public partial class MainWindow : Window
         if (_editor?.Session.Id == item.Session.Id) CloseEditor();
         try
         {
-            Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(item.Session.Folder,
-                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            var s = item.Session;
+            bool otherTakes = Directory.EnumerateFiles(s.Folder, "*.json")
+                .Any(f => SessionInfo.IsTakeFile(Path.GetFileName(f)) && !Path.GetFileName(f).Equals(s.JsonFile, StringComparison.OrdinalIgnoreCase));
+            var recycle = Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin;
+            var ui = Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs;
+            if (otherTakes)
+            {
+                // Other takes split from the same recording still use the media: remove only this take.
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(s.PathOf(s.JsonFile), ui, recycle);
+                if (File.Exists(s.PathOf(s.ThumbFile))) Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(s.PathOf(s.ThumbFile), ui, recycle);
+            }
+            else Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(s.Folder, ui, recycle);
         }
         catch (Exception ex)
         {

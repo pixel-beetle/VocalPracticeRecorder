@@ -30,20 +30,24 @@
 
         <!-- Timeline -->
         <Border Grid.Row="2" Margin="0,8,0,0" CornerRadius="6" ClipToBounds="True">
-            <ed:TimelineControl x:Name="Timeline" />
+            <ed:TimelineControl x:Name="Timeline" ToolTipService.InitialShowDelay="800" />
         </Border>
 
         <!-- Transport -->
-        <DockPanel Grid.Row="3" Margin="0,8,0,0" LastChildFill="False">
-            <Button x:Name="PlayButton" Content="▶ 播放" Click="OnPlay" MinWidth="90" ToolTip="空格" />
-            <TextBlock x:Name="TimeText" VerticalAlignment="Center" Margin="12,0" FontFamily="Consolas" FontSize="14" Text="0:00.00" />
-            <Button Content="[ 入点" Click="OnSetIn" Margin="8,0,0,0" ToolTip="把播放头位置设为开头 (I)" />
-            <Button Content="出点 ]" Click="OnSetOut" Margin="4,0,0,0" ToolTip="把播放头位置设为结尾 (O)" />
-            <Button Content="重置裁剪" Click="OnResetTrim" Margin="4,0,0,0" />
-            <TextBlock x:Name="TrimText" VerticalAlignment="Center" Margin="12,0" Foreground="{StaticResource SubtleTextBrush}" />
-            <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="{StaticResource SubtleTextBrush}" FontSize="11"
-                       Text="Ctrl+滚轮 缩放 · 滚轮 平移 · 拖黄色把手裁剪" />
-        </DockPanel>
+        <StackPanel Grid.Row="3" Margin="0,8,0,0">
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="PlayButton" Content="▶ 播放" Click="OnPlay" MinWidth="90" ToolTip="空格" />
+                <TextBlock x:Name="TimeText" VerticalAlignment="Center" Margin="10,0" FontFamily="Consolas" FontSize="14" Text="0:00.00" />
+                <Button Content="[ 入点" Click="OnSetIn" Margin="6,0,0,0" ToolTip="把播放头位置设为开头 (I)" />
+                <Button Content="出点 ]" Click="OnSetOut" Margin="4,0,0,0" ToolTip="把播放头位置设为结尾 (O)" />
+                <Button Content="重置" Click="OnResetTrim" Margin="4,0,0,0" ToolTip="清除头尾裁剪和所有删除" />
+                <Button x:Name="DeleteSelButton" Content="✂ 删除选区" Click="OnDeleteSelection" Margin="12,0,0,0" IsEnabled="False"
+                        ToolTip="在波形上拖动选出一段，按 Delete 删除；右键红色片段可恢复" />
+                <Button x:Name="SplitButton" Content="拆分" Click="OnSplit" Margin="4,0,0,0"
+                        ToolTip="在播放头处把这一遍拆成两个 take (S)" />
+            </StackPanel>
+            <TextBlock x:Name="TrimText" Margin="2,6,0,0" Foreground="{StaticResource SubtleTextBrush}" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
 
         <!-- Mix controls -->
         <Grid Grid.Row="4" Margin="0,12,0,0">

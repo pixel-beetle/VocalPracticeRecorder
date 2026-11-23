@@ -66,9 +66,20 @@ internal static class DemoData
                 s.Edit.MicChannel = ChannelSelector.Detect(audio.MicInterleaved, audio.MicChannels);
                 var est = SessionPostProcessor.AutoAlign(s, audio, null);
                 Log.Info($"demo {s.Id}: expected delay {delay * 1000:0}ms -> est {est.DelaySeconds * 1000:0.0}ms strength={est.Confidence:0}% bands={est.BandsAgreeing} reliable={est.IsReliable} ch={s.Edit.MicChannel}");
-                if (t == 1) { s.Edit.TrimStart = 1.6; s.Edit.TrimEnd = 57.5; s.Starred = true; }
+                if (t == 1)
+                {
+                    s.Edit.TrimStart = 1.6; s.Edit.TrimEnd = 57.5; s.Starred = true;
+                    s.Edit.Cuts = EditTimeline.AddCut(EditTimeline.AddCut([], new TimeRange(20, 23.5), 20), new TimeRange(40, 41), 20);
+                }
                 await SessionPostProcessor.MakeThumbnailAsync(s);
                 s.Save();
+                if (t == 2)
+                {
+                    var second = s.SplitAt(30);
+                    second.Save();
+                    s.Save();
+                    await SessionPostProcessor.MakeThumbnailAsync(second);
+                }
             }
         }
         return root;

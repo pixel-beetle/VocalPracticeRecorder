@@ -96,15 +96,36 @@ public sealed class PlaybackEngine : ISampleProvider, IDisposable
         long pos = Interlocked.Read(ref _pos);
         int frames = count / 2;
         bool ended = false;
+        // Kept segments as sample ranges: playback jumps over deleted sections exactly like the export.
+        var segs = EditTimeline.KeptSegments(_s);
+        int si = 0;
+        while (si < segs.Count && pos >= (long)Math.Round(segs[si].End * Rate)) si++;
+        if (si < segs.Count && pos < (long)Math.Round(segs[si].Start * Rate))
+        {
+            pos = (long)Math.Round(segs[si].Start * Rate);
+            Interlocked.Increment(ref _jumps);
+        }
+        long segEnd = si < segs.Count ? (long)Math.Round(segs[si].End * Rate) : 0;
         for (int i = 0; i < frames; i++)
         {
-            long t = pos + i;
-            if (t >= _endSample)
+            if (si < segs.Count && pos >= segEnd)
+            {
+                si++;
+                if (si < segs.Count)
+                {
+                    pos = (long)Math.Round(segs[si].Start * Rate);
+                    segEnd = (long)Math.Round(segs[si].End * Rate);
+                    Interlocked.Increment(ref _jumps);
+                }
+            }
+            long t = pos;
+            if (si >= segs.Count || t >= _endSample)
             {
                 buffer[(i * 2)..].Clear();
                 ended = true;
                 break;
             }
+            pos++;
             float v = 0, l = 0, r = 0;
             long vi = t - vOff;
             if (vi >= 0 && vi < vocal.Length) v = vocal[vi] * vg;
@@ -117,15 +138,18 @@ public sealed class PlaybackEngine : ISampleProvider, IDisposable
             buffer[i * 2] = Math.Clamp(v + l, -1f, 1f);
             buffer[i * 2 + 1] = Math.Clamp(v + r, -1f, 1f);
         }
-        Interlocked.Exchange(ref _pos, pos + frames);
+        Interlocked.Exchange(ref _pos, pos);
         if (ended)
         {
             _playing = false;
-            Interlocked.Exchange(ref _pos, _endSample);
             Ended?.Invoke();
         }
         return count;
     }
+
+    private long _jumps;
+    /// <summary>Increments whenever playback skipped over a deleted section (UI re-syncs the video).</summary>
+    public long JumpCount => Interlocked.Read(ref _jumps);
 
     public void Dispose()
     {

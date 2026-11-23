@@ -10,12 +10,14 @@
    - 外放唱歌时，程序会在麦克风里找伴奏的回声，**自动对齐人声**；
    - 戴耳机时找不到回声，用 `←` `→`（±10ms，Shift ±50ms）边听边调，调好的值按设备组合记住，下次自动套用；
    - 拖时间轴上的黄色把手或按 `I` / `O` 裁剪头尾；`Space` 播放；`Ctrl+Z` 撤销；Ctrl+滚轮缩放；
+   - **删除中间片段**：在波形上拖出选区 → `Delete`（红色斜线 = 已删除，右键可恢复）；播放和导出都会跳过；
+   - **拆分 take**：一次录了好几遍时，把播放头放到两遍之间按 `S`（或「拆分」），会变成两个独立的 take（共用同一份素材，不占额外空间）；
    - Scarlett Solo 的麦克风只在输入 1（左声道），程序会自动选对通道并放到中间。
 4. **导出**（`Ctrl+E`）：视频 MP4（H.264 + AAC 320k）/ 混音 MP3 320k / 干声 MP3 320k。点「复制文件」后到微信「文件传输助手」里 Ctrl+V。
 
 录音库按曲名（自动从浏览器标题识别，去掉【ニコカラ】、_哔哩哔哩_bilibili 等）分组，组内 Take 1/2/3…，可标「最佳」、重命名、删除（进回收站）。
 
-数据位置：`视频\练唱录制\Recordings`（原始素材，FLAC 无损）和 `视频\练唱录制\Exports`（导出文件）。日志：`%APPDATA%\VocalPracticeRecorder\log.txt`。
+数据位置默认在 `视频\练唱录制\`（`Recordings` 原始素材，FLAC 无损；`Exports` 导出文件），可以在左下角「⚙ 设置」里改到任意磁盘，并可选择把已有录音一起搬过去（同盘瞬间完成，跨盘先复制校验再删除）。导出位置也可以单独设置。日志：`%APPDATA%\VocalPracticeRecorder\log.txt`。
 
 ## 开发
 
@@ -29,3 +31,5 @@
 
 所有轨道都以录制开始时的 Stopwatch 时刻为原点记录首样本时间（音频用 WASAPI 包的 QPC 时间戳，视频按墙钟恒定帧率补帧/丢帧）。时间轴 0 点 = 视频首帧；
 人声位置 = `mic.StartOffset − video.StartOffset + 人声偏移`，伴奏位置 = `backing.StartOffset − video.StartOffset`。预览播放和 FFmpeg 导出使用同一套公式（`SessionInfo.VocalPlacement` / `BackingPlacement`）。
+
+剪辑结果 = `[入点, 出点] − 删除片段`（`EditTimeline.KeptSegments`），所有边界对齐到视频帧网格，因此视频按帧号、音频按样本在同一时刻切开；导出时逐段渲染后 concat，内部接缝有 5 ms 淡入淡出防爆音。一个录音文件夹可以有多个 take（`session.json` + `take-N.json`），共用同一份素材。
