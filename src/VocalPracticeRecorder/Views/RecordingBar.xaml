@@ -1,0 +1,38 @@
+<Window x:Class="VocalPracticeRecorder.Views.RecordingBar"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="录制中" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" Topmost="True" ShowInTaskbar="False" ShowActivated="False"
+        SizeToContent="WidthAndHeight">
+    <Border Background="#F0202124" CornerRadius="10" Padding="12,8" BorderBrush="#40FFFFFF" BorderThickness="1"
+            MouseLeftButtonDown="OnDragMove">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Ellipse x:Name="Dot" Width="12" Height="12" Fill="#E5484D" VerticalAlignment="Center" />
+            <TextBlock x:Name="Elapsed" Text="0:00" Foreground="White" FontSize="18" FontFamily="Consolas"
+                       Margin="8,0,14,0" VerticalAlignment="Center" MinWidth="58" />
+            <StackPanel VerticalAlignment="Center" Margin="0,0,14,0">
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="30" />
+                        <ColumnDefinition Width="110" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="人声" Foreground="#B0FFFFFF" FontSize="11" />
+                    <ProgressBar x:Name="MicMeter" Grid.Column="1" Height="6" Minimum="0" Maximum="1" Foreground="#3BA8F5"
+                                 Background="#30FFFFFF" BorderThickness="0" VerticalAlignment="Center" />
+                </Grid>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="30" />
+                        <ColumnDefinition Width="110" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="伴奏" Foreground="#B0FFFFFF" FontSize="11" />
+                    <ProgressBar x:Name="BackMeter" Grid.Column="1" Height="6" Minimum="0" Maximum="1" Foreground="#9B7BF0"
+                                 Background="#30FFFFFF" BorderThickness="0" VerticalAlignment="Center" />
+                </Grid>
+            </StackPanel>
+            <Button x:Name="StopButton" Content="■ 停止" Click="OnStop" Padding="14,6" Background="#E5484D"
+                    Foreground="White" FontWeight="SemiBold" Margin="0,0,6,0" />
+            <Button x:Name="DiscardButton" Content="✕" ToolTip="放弃本次录制" Click="OnDiscard" Padding="10,6" />
+        </StackPanel>
+    </Border>
+</Window>
