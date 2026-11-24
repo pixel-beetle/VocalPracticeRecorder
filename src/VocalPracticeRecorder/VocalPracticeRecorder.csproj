@@ -9,9 +9,11 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Prevent .NET 9 CET shadow-stack conflicts with third-party Explorer shell extensions in OpenFolderDialog. -->
+    <CETCompat>false</CETCompat>
     <AssemblyTitle>练唱录制</AssemblyTitle>
     <Product>练唱录制 VocalPracticeRecorder</Product>
-    <Version>0.3.1</Version>
+    <Version>0.3.2</Version>
   </PropertyGroup>
 
   <ItemGroup>

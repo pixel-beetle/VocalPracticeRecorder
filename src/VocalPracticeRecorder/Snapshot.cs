@@ -167,8 +167,42 @@ internal static class Snapshot
             }
         }
 
+        // State 5: Settings dialog + inline move confirmation overlay.
+        var sw = new SettingsWindow(settings)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -30000, Top = -30000, ShowActivated = false,
+        };
+        sw.Show();
+        await Task.Delay(300);
+        await sw.ShowConfirmPreviewForSnapshotAsync("把现有的 3 遍录音（68 MB）一起移动到新位置？",
+            "目标：F:\\VocalCoverVideos\\Practice\n「仅改位置」会把旧录音留在原处，不再显示在列表里。");
+        await Task.Delay(150);
+        Save(RenderOverSolid((FrameworkElement)sw.Content, 2), Path.Combine(outDir, "13-settings-confirm-2x.png"));
+        sw.Close();
+
         win.Close();
         return 0;
+    }
+
+    private static RenderTargetBitmap RenderOverSolid(FrameworkElement el, double scale)
+    {
+        el.UpdateLayout();
+        int pw = (int)Math.Ceiling(el.ActualWidth * scale), ph = (int)Math.Ceiling(el.ActualHeight * scale);
+        var rtb = new RenderTargetBitmap(pw, ph, 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            var bg = Application.Current.TryFindResource("SolidBackgroundFillColorBaseBrush") as Brush ?? Brushes.Black;
+            dc.DrawRectangle(bg, null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
+            var vb = new VisualBrush(el)
+            {
+                Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top,
+                ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, el.ActualWidth, el.ActualHeight),
+            };
+            dc.DrawRectangle(vb, null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
+        }
+        rtb.Render(dv);
+        return rtb;
     }
 
     private static RenderTargetBitmap RenderOverChecker(FrameworkElement el, double scale)

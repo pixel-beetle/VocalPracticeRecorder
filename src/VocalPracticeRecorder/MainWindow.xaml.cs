@@ -227,8 +227,20 @@ public partial class MainWindow : Window
         if (_controller.IsRecording) return;
         string? reopen = _editor?.Session.Id;
         if (IsEditorOpen) CloseEditor(restoreCapture: false);
-        var dlg = new SettingsWindow(_settings) { Owner = this };
-        dlg.ShowDialog();
+        // Drop Topmost while Settings is open so OpenFolderDialog, prompts, and Explorer never hide behind MainWindow.
+        bool prevTopmost = Topmost;
+        Topmost = false;
+        SettingsWindow dlg;
+        try
+        {
+            dlg = new SettingsWindow(_settings) { Owner = this };
+            dlg.ShowDialog();
+        }
+        finally
+        {
+            if (!IsEditorOpen) Topmost = _settings.TopmostInCapture;
+            else Topmost = prevTopmost;
+        }
         string? target = dlg.LibraryChanged ? null : reopen;
         RefreshLibrary(select: target);
         if (target == null || TakesList.SelectedItem == null) ShowCaptureMode();

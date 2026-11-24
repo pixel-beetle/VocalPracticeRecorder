@@ -32,13 +32,31 @@
                 <ComboBox x:Name="CrfBox" Width="190" Margin="8,0,0,0" SelectionChanged="OnQualityChanged" ToolTip="导出视频画质" />
             </StackPanel>
 
-            <Button Content="关闭" IsCancel="True" IsDefault="True" HorizontalAlignment="Right" MinWidth="80" Margin="0,20,0,0" Click="OnClose" />
+            <Button Content="关闭" IsCancel="True" HorizontalAlignment="Right" MinWidth="80" Margin="0,20,0,0" Click="OnClose" />
         </StackPanel>
 
+        <!-- Inline move confirmation (never fights Z-order with OpenFolderDialog or Topmost windows) -->
+        <Grid x:Name="ConfirmOverlay" Visibility="Collapsed" Background="#C8000000">
+            <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="22,18" HorizontalAlignment="Center" VerticalAlignment="Center" Width="460">
+                <StackPanel>
+                    <TextBlock x:Name="ConfirmTitle" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ConfirmDetail" Margin="0,8,0,0" Foreground="{StaticResource SubtleTextBrush}" FontSize="12.5" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                        <Button Content="移动过去" Style="{StaticResource AccentButtonStyle}" Click="OnConfirmMove" />
+                        <Button Content="仅改位置" Margin="8,0,0,0" Click="OnConfirmKeep" />
+                        <Button Content="取消" Margin="8,0,0,0" Click="OnConfirmCancel" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <!-- Move progress -->
-        <Grid x:Name="BusyOverlay" Visibility="Collapsed" Background="#C0000000">
-            <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" CornerRadius="8" Padding="24,18"
-                    HorizontalAlignment="Center" VerticalAlignment="Center" Width="400">
+        <Grid x:Name="BusyOverlay" Visibility="Collapsed" Background="#C8000000">
+            <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="24,18" HorizontalAlignment="Center" VerticalAlignment="Center" Width="420">
                 <StackPanel>
                     <TextBlock x:Name="BusyText" Text="移动中…" Margin="0,0,0,10" TextTrimming="CharacterEllipsis" />
                     <ProgressBar x:Name="BusyProgress" Height="6" Minimum="0" Maximum="1" />

@@ -9,9 +9,12 @@ namespace VocalPracticeRecorder.Views;
 
 public partial class SettingsWindow : Window
 {
+    private enum MoveChoice { Move, KeepOld, Cancel }
+
     private readonly AppSettings _settings;
     private bool _loading = true;
     private bool _busy;
+    private TaskCompletionSource<MoveChoice>? _confirmTcs;
 
     /// <summary>True if the recordings location changed (library must be reloaded).</summary>
     public bool LibraryChanged { get; private set; }
@@ -32,7 +35,16 @@ public partial class SettingsWindow : Window
         CrfBox.SelectedIndex = Math.Max(0, Array.FindIndex(Crfs, c => c.Crf == settings.Export.VideoCrf));
         _loading = false;
         Refresh();
-        Closing += (_, e) => { if (_busy) e.Cancel = true; };
+        Closing += (_, e) =>
+        {
+            if (_busy) { e.Cancel = true; return; }
+            if (_confirmTcs != null)
+            {
+                // Esc while the inline confirmation is open dismisses the confirmation, not the whole dialog.
+                ResolveConfirm(MoveChoice.Cancel);
+                e.Cancel = true;
+            }
+        };
     }
 
     private void Refresh()
@@ -59,13 +71,47 @@ public partial class SettingsWindow : Window
 
     private string? PickFolder(string title, string initial)
     {
-        var dlg = new OpenFolderDialog { Title = title, InitialDirectory = Directory.Exists(initial) ? initial : null };
-        return dlg.ShowDialog(this) == true ? dlg.FolderName : null;
+        var dlg = new OpenFolderDialog { Title = title };
+        if (Directory.Exists(initial)) dlg.InitialDirectory = initial;
+        bool? ok = dlg.ShowDialog(this);
+        Log.Info($"settings pick '{title}': ok={ok} path='{dlg.FolderName}'");
+        return ok == true && !string.IsNullOrWhiteSpace(dlg.FolderName) ? dlg.FolderName : null;
     }
+
+    internal Task<bool> ShowConfirmPreviewForSnapshotAsync(string title, string detail)
+    {
+        ConfirmTitle.Text = title;
+        ConfirmDetail.Text = detail;
+        ConfirmOverlay.Visibility = Visibility.Visible;
+        return Task.FromResult(true);
+    }
+
+    private Task<MoveChoice> AskMoveChoiceAsync(string title, string detail)
+    {
+        ConfirmTitle.Text = title;
+        ConfirmDetail.Text = detail;
+        ConfirmOverlay.Visibility = Visibility.Visible;
+        _confirmTcs = new TaskCompletionSource<MoveChoice>();
+        Activate();
+        return _confirmTcs.Task;
+    }
+
+    private void ResolveConfirm(MoveChoice choice)
+    {
+        ConfirmOverlay.Visibility = Visibility.Collapsed;
+        var tcs = _confirmTcs;
+        _confirmTcs = null;
+        tcs?.TrySetResult(choice);
+    }
+
+    private void OnConfirmMove(object sender, RoutedEventArgs e) => ResolveConfirm(MoveChoice.Move);
+    private void OnConfirmKeep(object sender, RoutedEventArgs e) => ResolveConfirm(MoveChoice.KeepOld);
+    private void OnConfirmCancel(object sender, RoutedEventArgs e) => ResolveConfirm(MoveChoice.Cancel);
 
     private async void OnChangeRoot(object sender, RoutedEventArgs e)
     {
-        var picked = PickFolder("选择录音库位置（会在里面建 Recordings / Exports 子文件夹）", _settings.Root);
+        if (_busy || _confirmTcs != null) return;
+        var picked = PickFolder("选择录音库位置", _settings.Root);
         if (picked == null) return;
         string newRoot = Path.GetFullPath(picked);
         string oldRec = _settings.RecordingsDir, newRec = Path.Combine(newRoot, "Recordings");
@@ -83,12 +129,12 @@ public partial class SettingsWindow : Window
         if (count > 0)
         {
             long need = DataMover.DirectorySize(oldRec) + (followExports ? DataMover.DirectorySize(oldExp) : 0);
-            var answer = MessageBox.Show(this,
-                $"把现有的 {count} 遍录音（{FormatSize(need)}）一起移动到新位置吗？\n\n" +
-                "是：移动过去（推荐）\n否：只改位置，旧录音留在原处，不再显示在列表里\n取消：不更改",
-                "移动录音", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-            if (answer == MessageBoxResult.Cancel) return;
-            move = answer == MessageBoxResult.Yes;
+            var choice = await AskMoveChoiceAsync(
+                $"把现有的 {count} 遍录音（{FormatSize(need)}）一起移动到新位置？",
+                $"目标：{newRoot}\n「仅改位置」会把旧录音留在原处，不再显示在列表里。");
+            Log.Info($"settings change-root choice={choice} -> {newRoot}");
+            if (choice == MoveChoice.Cancel) return;
+            move = choice == MoveChoice.Move;
             if (move && !HasSpace(oldRec, newRoot, need)) return;
         }
 
@@ -117,13 +163,17 @@ public partial class SettingsWindow : Window
 
     private async void OnChangeExports(object sender, RoutedEventArgs e)
     {
-        var picked = PickFolder("选择导出文件位置", _settings.ExportsDir);
+        if (_busy || _confirmTcs != null) return;
+        var picked = PickFolder("选择导出位置", _settings.ExportsDir);
         if (picked == null) return;
         await ChangeExportsAsync(Path.GetFullPath(picked));
     }
 
-    private async void OnFollowRoot(object sender, RoutedEventArgs e) =>
+    private async void OnFollowRoot(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _confirmTcs != null) return;
         await ChangeExportsAsync(Path.Combine(_settings.Root, "Exports"), follow: true);
+    }
 
     private async Task ChangeExportsAsync(string newExp, bool follow = false)
     {
@@ -141,10 +191,12 @@ public partial class SettingsWindow : Window
         bool hasFiles = Directory.Exists(oldExp) && Directory.EnumerateFileSystemEntries(oldExp).Any();
         if (hasFiles)
         {
-            var answer = MessageBox.Show(this, "把已经导出的文件也移动到新位置吗？\n\n是：移动\n否：只改位置\n取消：不更改",
-                "移动导出文件", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-            if (answer == MessageBoxResult.Cancel) return;
-            if (answer == MessageBoxResult.Yes)
+            var choice = await AskMoveChoiceAsync(
+                "把已导出的文件一起移动到新位置？",
+                $"目标：{newExp}");
+            Log.Info($"settings change-exports choice={choice} -> {newExp}");
+            if (choice == MoveChoice.Cancel) return;
+            if (choice == MoveChoice.Move)
             {
                 if (!HasSpace(oldExp, newExp, DataMover.DirectorySize(oldExp))) return;
                 bool ok = await RunMoveAsync(async progress =>
@@ -158,7 +210,8 @@ public partial class SettingsWindow : Window
         }
         _settings.ExportDirOverride = follow ? null : newExp;
         _settings.Save();
-        LibraryChanged = true; // export paths inside sessions may have changed
+        Log.Info($"exports dir -> {_settings.ExportsDir}");
+        LibraryChanged = true;
         Refresh();
     }
 
@@ -167,10 +220,10 @@ public partial class SettingsWindow : Window
         try
         {
             string? sr = Path.GetPathRoot(Path.GetFullPath(src)), dr = Path.GetPathRoot(Path.GetFullPath(dst));
-            if (dr == null || string.Equals(sr, dr, StringComparison.OrdinalIgnoreCase)) return true; // same disk: rename only
+            if (dr == null || string.Equals(sr, dr, StringComparison.OrdinalIgnoreCase)) return true;
             long free = new DriveInfo(dr).AvailableFreeSpace;
             if (free > need * 1.05) return true;
-            MessageBox.Show(this, $"目标磁盘空间不够：需要 {FormatSize(need)}，只剩 {FormatSize(free)}。", "空间不足", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, $"目标磁盘空间不够：需要 {FormatSize(need)}，剩余 {FormatSize(free)}。", "空间不足", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
         catch { return true; }
@@ -183,7 +236,7 @@ public partial class SettingsWindow : Window
         var progress = new Progress<MoveProgress>(p =>
         {
             BusyProgress.Value = p.Total == 0 ? 1 : (double)p.Done / p.Total;
-            BusyText.Text = p.Total == 0 ? "正在移动…" : $"正在移动 {p.Done}/{p.Total}  {p.Current}";
+            BusyText.Text = p.Total == 0 ? "移动中…" : $"移动中 {p.Done}/{p.Total}  {p.Current}";
         });
         try
         {
