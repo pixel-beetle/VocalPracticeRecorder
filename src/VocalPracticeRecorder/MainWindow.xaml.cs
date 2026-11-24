@@ -67,12 +67,9 @@ public partial class MainWindow : Window
     private string? _lastDeviceError;
     private PixelRect? _savedCaptureBounds;
     private bool _expandedForEditor;
-    private (int W, int H, PixelRect Hole) _lastHoleState;
-    private bool _holeUpdateQueued;
 
     private bool IsEditorOpen => _editor != null;
     private bool IsBusy => BusyOverlay.Visibility == Visibility.Visible;
-    private bool ShouldHaveHole => _loaded && !IsEditorOpen && !IsBusy && WindowState != WindowState.Minimized;
 
     public MainWindow() : this(null) { }
 
@@ -93,13 +90,13 @@ public partial class MainWindow : Window
         SizeChanged += OnWindowGeometryChanged;
         LocationChanged += OnWindowGeometryChanged;
         StateChanged += OnWindowStateChanged;
-        DpiChanged += (_, _) => ScheduleHoleUpdate();
-        CaptureViewport.SizeChanged += (_, _) => ScheduleHoleUpdate();
+        CaptureViewport.SizeChanged += (_, _) => UpdateCaptureTooltip();
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
-        Native.InstallWorkAreaMaximizeHook(this);
+        Native.DisableBackdrop(this);
+        Native.InstallBorderlessHooks(this, () => !_controller.IsRecording, resizeBorderDip: 6);
         if (_settings.CaptureWindowBounds is { } saved)
         {
             var mons = ScreenCapturer.EnumerateMonitors().Select(m => m.Bounds).ToList();
@@ -110,6 +107,7 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _loaded = true;
+        Native.DisableBackdrop(this);
         if (!Ffmpeg.IsAvailable)
         {
             MessageBox.Show(this, "找不到 ffmpeg.exe。\n请把 ffmpeg.exe 放到程序所在目录，或安装 FFmpeg 并加入 PATH。", "缺少 FFmpeg",
@@ -122,14 +120,14 @@ public partial class MainWindow : Window
         LoadDevices();
         RefreshLibrary();
         _meterTimer.Start();
-        ScheduleHoleUpdate();
+        UpdateCaptureTooltip();
     }
 
-    // ---------------- Transparent Capture Hole ----------------
+    // ---------------- Capture Viewport Geometry ----------------
 
     private void OnWindowGeometryChanged(object? sender, EventArgs e)
     {
-        ScheduleHoleUpdate();
+        UpdateCaptureTooltip();
         if (_loaded && !IsEditorOpen && !IsBusy && !_controller.IsRecording && WindowState == WindowState.Normal)
         {
             _boundsSaveTimer.Stop();
@@ -140,7 +138,7 @@ public partial class MainWindow : Window
     private void OnWindowStateChanged(object? sender, EventArgs e)
     {
         UpdateMaximizeGlyph();
-        ScheduleHoleUpdate();
+        UpdateCaptureTooltip();
     }
 
     private void OnSaveCaptureBounds(object? sender, EventArgs e)
@@ -149,17 +147,6 @@ public partial class MainWindow : Window
         if (IsEditorOpen || IsBusy || _controller.IsRecording || WindowState != WindowState.Normal) return;
         _settings.CaptureWindowBounds = Native.GetPhysicalBounds(this);
         _settings.Save();
-    }
-
-    private void ScheduleHoleUpdate()
-    {
-        if (!_loaded || _holeUpdateQueued) return;
-        _holeUpdateQueued = true;
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
-        {
-            _holeUpdateQueued = false;
-            UpdateCaptureHole();
-        });
     }
 
     private PixelRect ViewportPhysicalRect()
@@ -171,27 +158,10 @@ public partial class MainWindow : Window
             (int)Math.Round(br.X - tl.X), (int)Math.Round(br.Y - tl.Y));
     }
 
-    private void UpdateCaptureHole()
+    private void UpdateCaptureTooltip()
     {
-        if (!_loaded) return;
-        if (!ShouldHaveHole)
-        {
-            if (_lastHoleState != default)
-            {
-                Native.SetWindowHole(this, null, 0, 0);
-                _lastHoleState = default;
-            }
-            return;
-        }
-        var win = Native.GetPhysicalBounds(this);
+        if (!_loaded || IsEditorOpen || IsBusy) return;
         var vp = ViewportPhysicalRect();
-        var hole = RegionMath.WindowLocalHole(win, vp, minBorder: 3);
-        var state = (win.Width, win.Height, hole);
-        if (state != _lastHoleState)
-        {
-            Native.SetWindowHole(this, hole.IsEmpty ? null : hole, win.Width, win.Height);
-            _lastHoleState = state;
-        }
         if (!vp.IsEmpty)
         {
             var (ow, oh) = RegionMath.OutputSize(vp.Width, vp.Height, _settings.MaxHeight);
@@ -249,7 +219,7 @@ public partial class MainWindow : Window
             _settings.SidebarOpen = open;
             _settings.Save();
         }
-        ScheduleHoleUpdate();
+        UpdateCaptureTooltip();
     }
 
     private void OnSettings(object sender, RoutedEventArgs e)
@@ -361,7 +331,7 @@ public partial class MainWindow : Window
         ViewportFrame.Visibility = Visibility.Visible;
         Topmost = _settings.TopmostInCapture;
         if (!_controller.DevicesOpen) OpenDevices();
-        ScheduleHoleUpdate();
+        UpdateCaptureTooltip();
     }
 
     private void OnStartRecording(object sender, RoutedEventArgs e)
@@ -469,13 +439,11 @@ public partial class MainWindow : Window
             Topmost = _settings.TopmostInCapture;
             MessageBox.Show(this, "录制出错：" + error.Message, "录制失败", MessageBoxButton.OK, MessageBoxImage.Error);
             RefreshLibrary();
-            ScheduleHoleUpdate();
             return;
         }
         if (s == null)
         {
             Topmost = _settings.TopmostInCapture;
-            ScheduleHoleUpdate();
             return;
         }
 
@@ -515,7 +483,6 @@ public partial class MainWindow : Window
     {
         BusyOverlay.Visibility = text == null ? Visibility.Collapsed : Visibility.Visible;
         if (text != null) BusyText.Text = text;
-        UpdateCaptureHole();
     }
 
     // ---------------- Library & Editor ----------------
@@ -581,7 +548,6 @@ public partial class MainWindow : Window
         ViewportFrame.Visibility = Visibility.Collapsed;
         EditorTopBar.Visibility = Visibility.Visible;
         EditorHostBorder.Visibility = Visibility.Visible;
-        UpdateCaptureHole();
     }
 
     private async void OnTakeSelected(object sender, SelectionChangedEventArgs e)

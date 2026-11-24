@@ -11,8 +11,13 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyTitle>练唱录制</AssemblyTitle>
     <Product>练唱录制 VocalPracticeRecorder</Product>
-    <Version>0.1.0</Version>
+    <Version>0.3.1</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Prevent .NET 9 Fluent from forcing an opaque Windows 11 Mica backdrop behind the transparent viewfinder. -->
+    <RuntimeHostConfigurationOption Include="Switch.System.Windows.Appearance.DisableFluentThemeWindowBackdrop" Value="True" />
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="app.ico" />

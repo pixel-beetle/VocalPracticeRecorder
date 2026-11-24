@@ -16,15 +16,22 @@ internal static class Native
     private const uint SWP_NOZORDER = 0x0004;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint MONITOR_DEFAULTTONEAREST = 2;
-    private const int RGN_DIFF = 4;
     private const int WM_GETMINMAXINFO = 0x0024;
-    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    private const int WM_NCHITTEST = 0x0084;
+    private const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    private const int DWMSBT_NONE = 1;
+
+    private const int HTLEFT = 10, HTRIGHT = 11, HTTOP = 12, HTTOPLEFT = 13, HTTOPRIGHT = 14,
+        HTBOTTOM = 15, HTBOTTOMLEFT = 16, HTBOTTOMRIGHT = 17;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X, Y; }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MARGINS { public int Left, Right, Top, Bottom; }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MINMAXINFO
@@ -48,46 +55,39 @@ internal static class Native
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder sb, int max);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-    [DllImport("user32.dll")] private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
     [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO info);
-    [DllImport("gdi32.dll")] private static extern IntPtr CreateRectRgn(int x1, int y1, int x2, int y2);
-    [DllImport("gdi32.dll")] private static extern int CombineRgn(IntPtr dst, IntPtr src1, IntPtr src2, int mode);
-    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hWnd, int attr, ref int val, int size);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out int val, int size);
+    [DllImport("dwmapi.dll")] private static extern int DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS margins);
 
     public static IntPtr Handle(Window w) => new WindowInteropHelper(w).EnsureHandle();
 
     /// <summary>Toggles whether this window is hidden from DXGI/GDI screen capture (Win10 2004+).</summary>
-    public static void SetExcludeFromCapture(Window w, bool exclude)
+    public static bool SetExcludeFromCapture(Window w, bool exclude)
     {
-        try { SetWindowDisplayAffinity(Handle(w), exclude ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE); } catch { }
+        try { return SetWindowDisplayAffinity(Handle(w), exclude ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE); }
+        catch { return false; }
     }
 
-    /// <summary>Hints DWM to use dark titlebar chrome on secondary dialogs (e.g. SettingsWindow).</summary>
-    public static void SetDarkTitleBar(Window w, bool dark)
+    /// <summary>Ensures Windows 11 DWM never paints a Mica/Acrylic system backdrop behind our transparent viewport.</summary>
+    public static void DisableBackdrop(Window w)
     {
-        try { int v = dark ? 1 : 0; DwmSetWindowAttribute(Handle(w), DWMWA_USE_IMMERSIVE_DARK_MODE, ref v, sizeof(int)); } catch { }
-    }
-
-    /// <summary>
-    /// Punches a crisp rectangular transparent + click-through hole out of <paramref name="w"/> using <c>SetWindowRgn</c>.
-    /// Pass <c>null</c> to restore a solid rectangular window (editor mode).
-    /// </summary>
-    public static void SetWindowHole(Window w, PixelRect? holeWindowLocal, int winW, int winH)
-    {
-        var hwnd = Handle(w);
-        if (holeWindowLocal is not { } h || h.IsEmpty || winW <= 0 || winH <= 0)
+        try
         {
-            SetWindowRgn(hwnd, IntPtr.Zero, true);
-            return;
+            var hwnd = Handle(w);
+            int none = DWMSBT_NONE;
+            DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref none, sizeof(int));
+            var zero = default(MARGINS);
+            DwmExtendFrameIntoClientArea(hwnd, ref zero);
         }
-        IntPtr outer = CreateRectRgn(0, 0, winW, winH);
-        IntPtr hole = CreateRectRgn(h.X, h.Y, h.Right, h.Bottom);
-        CombineRgn(outer, outer, hole, RGN_DIFF);
-        DeleteObject(hole);
-        // SetWindowRgn transfers ownership of `outer` to the OS on success (non-zero).
-        if (SetWindowRgn(hwnd, outer, true) == 0) DeleteObject(outer);
+        catch { }
+    }
+
+    public static int GetBackdropType(Window w)
+    {
+        try { return DwmGetWindowAttribute(Handle(w), DWMWA_SYSTEMBACKDROP_TYPE, out int v, sizeof(int)) == 0 ? v : -1; }
+        catch { return -1; }
     }
 
     /// <summary>Positions a window in physical pixels (bypasses WPF's DIP conversion).</summary>
@@ -110,28 +110,68 @@ internal static class Native
         return new PixelRect(0, 0, 1920, 1040);
     }
 
-    /// <summary>Ensures a borderless WindowChrome window maximizes to the monitor work area (never covers the taskbar).</summary>
-    public static void InstallWorkAreaMaximizeHook(Window w)
+    /// <summary>
+    /// Installs native Win32 hooks for a borderless transparent window:
+    /// 1) WM_GETMINMAXINFO so maximizing respects the taskbar and honours MinWidth/MinHeight.
+    /// 2) WM_NCHITTEST so dragging the 6px outer edges/corners resizes natively with OS cursors.
+    /// </summary>
+    public static void InstallBorderlessHooks(Window w, Func<bool> canResize, int resizeBorderDip = 6)
     {
         var src = HwndSource.FromHwnd(Handle(w));
         src?.AddHook((IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
         {
-            if (msg != WM_GETMINMAXINFO) return IntPtr.Zero;
-            var mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-            if (mon == IntPtr.Zero) return IntPtr.Zero;
-            var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-            if (!GetMonitorInfo(mon, ref mi)) return IntPtr.Zero;
+            if (msg == WM_GETMINMAXINFO)
+            {
+                var mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                if (mon == IntPtr.Zero) return IntPtr.Zero;
+                var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+                if (!GetMonitorInfo(mon, ref mi)) return IntPtr.Zero;
 
-            var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
-            mmi.ptMaxPosition.X = mi.rcWork.Left - mi.rcMonitor.Left;
-            mmi.ptMaxPosition.Y = mi.rcWork.Top - mi.rcMonitor.Top;
-            mmi.ptMaxSize.X = mi.rcWork.Right - mi.rcWork.Left;
-            mmi.ptMaxSize.Y = mi.rcWork.Bottom - mi.rcWork.Top;
-            var dpi = VisualTreeHelper.GetDpi(w);
-            if (w.MinWidth > 0) mmi.ptMinTrackSize.X = (int)Math.Ceiling(w.MinWidth * dpi.DpiScaleX);
-            if (w.MinHeight > 0) mmi.ptMinTrackSize.Y = (int)Math.Ceiling(w.MinHeight * dpi.DpiScaleY);
-            Marshal.StructureToPtr(mmi, lParam, true);
-            handled = true;
+                var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
+                mmi.ptMaxPosition.X = mi.rcWork.Left - mi.rcMonitor.Left;
+                mmi.ptMaxPosition.Y = mi.rcWork.Top - mi.rcMonitor.Top;
+                mmi.ptMaxSize.X = mi.rcWork.Right - mi.rcWork.Left;
+                mmi.ptMaxSize.Y = mi.rcWork.Bottom - mi.rcWork.Top;
+                var dpi = VisualTreeHelper.GetDpi(w);
+                if (w.MinWidth > 0) mmi.ptMinTrackSize.X = (int)Math.Ceiling(w.MinWidth * dpi.DpiScaleX);
+                if (w.MinHeight > 0) mmi.ptMinTrackSize.Y = (int)Math.Ceiling(w.MinHeight * dpi.DpiScaleY);
+                Marshal.StructureToPtr(mmi, lParam, true);
+                handled = true;
+                return IntPtr.Zero;
+            }
+            if (msg == WM_NCHITTEST && w.WindowState == WindowState.Normal && canResize())
+            {
+                // Signed 16-bit screen coords (important for monitors to the left/above primary).
+                long lp = lParam.ToInt64();
+                int x = (short)(lp & 0xFFFF);
+                int y = (short)((lp >> 16) & 0xFFFF);
+                GetWindowRect(hwnd, out var r);
+                var dpi = VisualTreeHelper.GetDpi(w);
+                int bx = (int)Math.Ceiling(resizeBorderDip * dpi.DpiScaleX);
+                int by = (int)Math.Ceiling(resizeBorderDip * dpi.DpiScaleY);
+                bool left = x >= r.Left && x < r.Left + bx;
+                bool right = x <= r.Right && x >= r.Right - bx;
+                bool top = y >= r.Top && y < r.Top + by;
+                bool bottom = y <= r.Bottom && y >= r.Bottom - by;
+
+                int hit = (top, bottom, left, right) switch
+                {
+                    (true, _, true, _) => HTTOPLEFT,
+                    (true, _, _, true) => HTTOPRIGHT,
+                    (_, true, true, _) => HTBOTTOMLEFT,
+                    (_, true, _, true) => HTBOTTOMRIGHT,
+                    (true, _, _, _) => HTTOP,
+                    (_, true, _, _) => HTBOTTOM,
+                    (_, _, true, _) => HTLEFT,
+                    (_, _, _, true) => HTRIGHT,
+                    _ => 0,
+                };
+                if (hit != 0)
+                {
+                    handled = true;
+                    return new IntPtr(hit);
+                }
+            }
             return IntPtr.Zero;
         });
     }
@@ -145,7 +185,6 @@ internal static class Native
         var h = WindowFromPoint(new POINT { X = x, Y = y });
         var root = h != IntPtr.Zero ? GetAncestor(h, GA_ROOT) : IntPtr.Zero;
         if (root == IntPtr.Zero) root = h;
-        // Walk below our own window in Z-order if WindowFromPoint hit us.
         while (root != IntPtr.Zero && root == ignoreRoot)
         {
             var next = GetWindow(root, GW_HWNDNEXT);

@@ -1,5 +1,4 @@
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -10,35 +9,59 @@ using VocalPracticeRecorder.Views;
 namespace VocalPracticeRecorder;
 
 /// <summary>
-/// Renders the app's UI across all parallel states to PNG files (in-process RenderTargetBitmap, no screen capture)
-/// and verifies Win32 region-hole invariants: <c>--snapshot &lt;outDir&gt; &lt;dataRoot|demo&gt;</c>.
-/// Never modifies the user's real settings.json (Persist = false).
+/// Renders the app's UI across all parallel states to PNG files and verifies real alpha transparency,
+/// backdrop-disabled, WDA_EXCLUDEFROMCAPTURE, and MediaElement invariants:
+/// <c>--snapshot &lt;outDir&gt; &lt;dataRoot|demo&gt;</c>. Never modifies settings.json.
 /// </summary>
 internal static class Snapshot
 {
-    [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr hWnd, IntPtr hRgn);
-    [DllImport("gdi32.dll")] private static extern IntPtr CreateRectRgn(int x1, int y1, int x2, int y2);
-    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
-    [DllImport("gdi32.dll")] private static extern bool PtInRegion(IntPtr hRgn, int x, int y);
-
-    private static bool CheckHole(Window w, out bool holePunched, out bool borderSolid)
+    private static (byte A, byte R, byte G, byte B) SamplePixel(RenderTargetBitmap bmp, int x, int y)
     {
-        IntPtr rgn = CreateRectRgn(0, 0, 0, 0);
-        try
+        x = Math.Clamp(x, 0, bmp.PixelWidth - 1);
+        y = Math.Clamp(y, 0, bmp.PixelHeight - 1);
+        var px = new byte[4];
+        bmp.CopyPixels(new Int32Rect(x, y, 1, 1), px, 4, 0);
+        return (px[3], px[2], px[1], px[0]); // Pbgra32
+    }
+
+    /// <summary>Renders the true WPF window alpha buffer (transparent pixels stay alpha == 0).</summary>
+    private static RenderTargetBitmap RenderTrueAlpha(FrameworkElement el, double scale = 1)
+    {
+        el.UpdateLayout();
+        int pw = (int)Math.Ceiling(el.ActualWidth * scale), ph = (int)Math.Ceiling(el.ActualHeight * scale);
+        var rtb = new RenderTargetBitmap(pw, ph, 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
         {
-            int res = GetWindowRgn(Native.Handle(w), rgn);
-            if (res == 0) { holePunched = false; borderSolid = true; return false; } // ERROR = no custom region (solid)
-            var b = Native.GetPhysicalBounds(w);
-            var vp = (FrameworkElement)w.FindName("CaptureViewport");
-            var tl = vp.PointToScreen(new Point(0, 0));
-            var br = vp.PointToScreen(new Point(vp.ActualWidth, vp.ActualHeight));
-            int cx = (int)((tl.X + br.X) / 2) - b.X;
-            int cy = (int)((tl.Y + br.Y) / 2) - b.Y;
-            holePunched = !PtInRegion(rgn, cx, cy); // hole centre must NOT be inside the window region
-            borderSolid = PtInRegion(rgn, b.Width / 2, 10) && PtInRegion(rgn, b.Width - 2, b.Height - 2);
-            return true;
+            var vb = new VisualBrush(el)
+            {
+                Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top,
+                ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, el.ActualWidth, el.ActualHeight),
+            };
+            dc.DrawRectangle(vb, null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
         }
-        finally { DeleteObject(rgn); }
+        rtb.Render(dv);
+        return rtb;
+    }
+
+    private static void AssertCaptureTransparency(Window w, string label)
+    {
+        var rootEl = (FrameworkElement)w.Content;
+        var vp = (FrameworkElement)w.FindName("CaptureViewport");
+        var trueBmp = RenderTrueAlpha(rootEl, 1);
+        var hole = vp.TransformToAncestor(rootEl).TransformBounds(new Rect(0, 0, vp.ActualWidth, vp.ActualHeight));
+        var center = SamplePixel(trueBmp, (int)(hole.X + hole.Width / 2), (int)(hole.Y + hole.Height / 2));
+        var corner = SamplePixel(trueBmp, (int)(hole.X + 2), (int)(hole.Y + 2));
+        var topBarPx = SamplePixel(trueBmp, trueBmp.PixelWidth / 2, 20);
+        var framePx = SamplePixel(trueBmp, trueBmp.PixelWidth - 3, trueBmp.PixelHeight / 2);
+        int backdrop = Native.GetBackdropType(w);
+        Log.Info($"snapshot {label}: holeCenterA={center.A} holeCornerA={corner.A} topBarA={topBarPx.A} frameA={framePx.A} backdrop={backdrop}");
+        if (center.A != 0 || corner.A != 0)
+            throw new InvalidOperationException($"{label}: capture hole is not transparent (centerA={center.A}, cornerA={corner.A})");
+        if (topBarPx.A < 250 || framePx.A < 250)
+            throw new InvalidOperationException($"{label}: chrome/frame is not opaque (topBarA={topBarPx.A}, frameA={framePx.A})");
+        if (backdrop == 2 || backdrop == 3 || backdrop == 4)
+            throw new InvalidOperationException($"{label}: Windows 11 DWM backdrop is active (type={backdrop}), which blocks transparency!");
     }
 
     public static async Task<int> RunAsync(string[] args)
@@ -61,120 +84,108 @@ internal static class Snapshot
         win.Show();
         await Task.Delay(1000);
 
-        // State 1: Capture Mode, sidebar collapsed (default startup).
-        bool hasRgn1 = CheckHole(win, out bool hole1, out bool border1);
-        Log.Info($"snapshot capture-collapsed: hasRgn={hasRgn1} holePunched={hole1} borderSolid={border1}");
-        if (!hasRgn1 || !hole1 || !border1) throw new InvalidOperationException($"Capture hole invariant failed: hasRgn={hasRgn1} hole={hole1} border={border1}");
+        // Assert WDA_EXCLUDEFROMCAPTURE toggles cleanly on AllowsTransparency window.
+        bool exclOn = Native.SetExcludeFromCapture(win, true);
+        bool exclOff = Native.SetExcludeFromCapture(win, false);
+        Log.Info($"snapshot wda: on={exclOn} off={exclOff}");
+        if (!exclOn || !exclOff) throw new InvalidOperationException($"SetExcludeFromCapture failed: on={exclOn} off={exclOff}");
 
-        RenderCaptureWindow(win, Path.Combine(outDir, "1-capture-collapsed.png"), 1);
+        // State 1: Capture Mode, sidebar collapsed.
+        AssertCaptureTransparency(win, "capture-collapsed");
+        // Save TRUE transparent PNG (alpha=0 hole!) + preview-over-checker PNG.
         var rootEl = (FrameworkElement)win.Content;
+        Save(RenderTrueAlpha(rootEl, 1), Path.Combine(outDir, "1-capture-true-alpha.png"));
+        Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "1-capture-collapsed.png"));
+
         var rootGrid = (Grid)win.FindName("RootGrid");
         var topBar = (FrameworkElement)rootGrid.Children[0];
-        var fullCap = RenderCaptureBitmap(win, 2);
-        Crop(fullCap, rootEl, topBar, Path.Combine(outDir, "4-topbar-capture-2x.png"));
+        Crop(RenderOverChecker(rootEl, 2), rootEl, topBar, Path.Combine(outDir, "4-topbar-capture-2x.png"));
 
-        // State 1b: Capture Mode — Active Recording state (red border, live meters, timer, Stop/Discard).
+        // State 1b: Capture Recording state.
         win.SetRecordingUi(true);
         ((TextBlock)win.FindName("ElapsedText")).Text = "1:24";
         ((ProgressBar)win.FindName("MicMeter")).Value = 0.65;
         ((ProgressBar)win.FindName("BackMeter")).Value = 0.48;
         await Task.Delay(200);
-        RenderCaptureWindow(win, Path.Combine(outDir, "1b-capture-recording.png"), 1);
-        Crop(RenderCaptureBitmap(win, 2), rootEl, topBar, Path.Combine(outDir, "4b-topbar-recording-2x.png"));
+        AssertCaptureTransparency(win, "capture-recording");
+        Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "1b-capture-recording.png"));
+        Crop(RenderOverChecker(rootEl, 2), rootEl, topBar, Path.Combine(outDir, "4b-topbar-recording-2x.png"));
         win.SetRecordingUi(false);
         await Task.Delay(150);
 
-        // State 2: Narrow Capture Mode (640x420) — checks top bar doesn't clip/overlap.
+        // State 2: Narrow Capture Mode (640x420).
         win.Width = 640; win.Height = 420;
-        await Task.Delay(400);
-        bool hasRgnNarrow = CheckHole(win, out bool holeNarrow, out bool borderNarrow);
-        if (!hasRgnNarrow || !holeNarrow || !borderNarrow) throw new InvalidOperationException("Narrow capture hole invariant failed");
-        RenderCaptureWindow(win, Path.Combine(outDir, "2-capture-narrow-640.png"), 1);
-        Crop(RenderCaptureBitmap(win, 2), rootEl, topBar, Path.Combine(outDir, "5-topbar-narrow-2x.png"));
+        await Task.Delay(350);
+        AssertCaptureTransparency(win, "capture-narrow");
+        Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "2-capture-narrow-640.png"));
 
         // State 3: Capture Mode with sidebar expanded.
         win.Width = 1060; win.Height = 680;
         win.SetSidebar(true, save: false);
-        await Task.Delay(400);
-        bool hasRgnSide = CheckHole(win, out bool holeSide, out bool borderSide);
-        if (!hasRgnSide || !holeSide || !borderSide) throw new InvalidOperationException("Sidebar-open capture hole invariant failed");
-        RenderCaptureWindow(win, Path.Combine(outDir, "3-capture-sidebar-open.png"), 1);
+        await Task.Delay(350);
+        AssertCaptureTransparency(win, "capture-sidebar-open");
+        Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "3-capture-sidebar-open.png"));
 
-        // State 4: Editor Mode (solid window, no hole!).
+        // State 4: Editor Mode (must be 100% solid AND MediaElement must render actual video pixels!).
         var list = (ListBox)win.FindName("TakesList");
         if (list.Items.Count > 0)
         {
             var withCuts = list.Items.Cast<TakeItem>().FirstOrDefault(t => t.Session.Edit.Cuts.Count > 0);
             list.SelectedItem = withCuts ?? list.Items[^1];
-            await Task.Delay(2200);
-            bool hasRgnEd = CheckHole(win, out _, out _);
-            Log.Info($"snapshot editor: hasRgn={hasRgnEd}");
-            if (hasRgnEd) throw new InvalidOperationException("Editor mode must clear the window region (solid window)");
-
+            await Task.Delay(2500);
             if (win.FindName("EditorHost") is ContentControl { Content: EditorView ed } && ed.FindName("Timeline") is Editing.TimelineControl tl)
             {
                 tl.Selection = new TimeRange(30, 34.5);
-                await Task.Delay(200);
-                // Layout invariant: sliders must stay comfortably draggable even with sidebar + suggestion button open.
+                await Task.Delay(250);
+                var edTrue = RenderTrueAlpha(rootEl, 1);
+                var edCenter = SamplePixel(edTrue, edTrue.PixelWidth * 2 / 3, edTrue.PixelHeight / 2);
+                if (edCenter.A < 250) throw new InvalidOperationException($"Editor is not opaque: A={edCenter.A}");
+
+                // Verify MediaElement renders real non-black video inside AllowsTransparency=True!
+                var video = (FrameworkElement)ed.FindName("Video");
+                var vr = video.TransformToAncestor(rootEl).TransformBounds(new Rect(0, 0, video.ActualWidth, video.ActualHeight));
+                int bright = 0;
+                for (int dy = 1; dy <= 4; dy++)
+                    for (int dx = 1; dx <= 6; dx++)
+                    {
+                        var p = SamplePixel(edTrue, (int)(vr.X + vr.Width * dx / 7), (int)(vr.Y + vr.Height * dy / 5));
+                        if (p.R > 30 || p.G > 30 || p.B > 30) bright++;
+                    }
+                Log.Info($"snapshot editor: alpha={edCenter.A} videoBrightSamples={bright}/24");
+                if (bright < 4) throw new InvalidOperationException($"MediaElement appears black in AllowsTransparency window (bright={bright}/24)");
+
                 var vg = (FrameworkElement)ed.FindName("VocalGain");
                 var bg = (FrameworkElement)ed.FindName("BackingGain");
                 if (vg.ActualWidth < 80 || bg.ActualWidth < 80)
                     throw new InvalidOperationException($"Slider squeezed too narrow: vocal={vg.ActualWidth:0}px backing={bg.ActualWidth:0}px");
-                RenderElement(rootEl, Path.Combine(outDir, "6-editor.png"), 1);
-                var full = RenderBitmap(rootEl, 2);
+
+                Save(edTrue, Path.Combine(outDir, "6-editor.png"));
+                var full = RenderTrueAlpha(rootEl, 2);
                 Crop(full, rootEl, topBar, Path.Combine(outDir, "7-topbar-editor-2x.png"));
-                Crop(full, rootEl, list, Path.Combine(outDir, "8-library-2x.png"));
                 var grid = (Grid)ed.Content;
-                Crop(full, rootEl, (FrameworkElement)ed.FindName("Timeline"), Path.Combine(outDir, "9-timeline-2x.png"));
-                Crop(full, rootEl, (FrameworkElement)grid.Children[2], Path.Combine(outDir, "10-transport-2x.png"));
                 Crop(full, rootEl, (FrameworkElement)grid.Children[3], Path.Combine(outDir, "11-mix-controls-2x.png"));
-                Crop(full, rootEl, (FrameworkElement)grid.Children[4], Path.Combine(outDir, "12-export-bar-2x.png"));
             }
         }
-
-        // State 5: Settings dialog.
-        var settingsWin = new SettingsWindow(settings)
-        {
-            WindowStartupLocation = WindowStartupLocation.Manual, Left = -30000, Top = -30000, ShowActivated = false,
-        };
-        settingsWin.Show();
-        await Task.Delay(400);
-        RenderElement((FrameworkElement)settingsWin.Content, Path.Combine(outDir, "13-settings-2x.png"));
-        settingsWin.Close();
 
         win.Close();
         return 0;
     }
 
-    private static void RenderCaptureWindow(Window w, string path, double scale)
+    private static RenderTargetBitmap RenderOverChecker(FrameworkElement el, double scale)
     {
-        var bmp = RenderCaptureBitmap(w, scale);
-        if (bmp != null) Save(bmp, path);
-    }
-
-    /// <summary>Renders the capture-mode window with a subtle checkerboard behind the transparent hole for visual review.</summary>
-    private static RenderTargetBitmap? RenderCaptureBitmap(Window w, double scale)
-    {
-        var rootEl = (FrameworkElement)w.Content;
-        rootEl.UpdateLayout();
-        int pw = (int)Math.Ceiling(rootEl.ActualWidth * scale), ph = (int)Math.Ceiling(rootEl.ActualHeight * scale);
-        if (pw <= 0 || ph <= 0) return null;
-        var vp = (FrameworkElement)w.FindName("CaptureViewport");
-        var hole = vp.IsVisible ? vp.TransformToAncestor(rootEl).TransformBounds(new Rect(0, 0, vp.ActualWidth, vp.ActualHeight)) : Rect.Empty;
-
+        el.UpdateLayout();
+        int pw = (int)Math.Ceiling(el.ActualWidth * scale), ph = (int)Math.Ceiling(el.ActualHeight * scale);
         var rtb = new RenderTargetBitmap(pw, ph, 96 * scale, 96 * scale, PixelFormats.Pbgra32);
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
-            var bg = Application.Current.TryFindResource("SolidBackgroundFillColorBaseBrush") as Brush ?? Brushes.Black;
-            dc.DrawRectangle(bg, null, new Rect(0, 0, rootEl.ActualWidth, rootEl.ActualHeight));
-            var vb = new VisualBrush(rootEl)
+            dc.DrawRectangle(MakeCheckerBrush(), null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
+            var vb = new VisualBrush(el)
             {
                 Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top,
-                ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, rootEl.ActualWidth, rootEl.ActualHeight),
+                ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, el.ActualWidth, el.ActualHeight),
             };
-            dc.DrawRectangle(vb, null, new Rect(0, 0, rootEl.ActualWidth, rootEl.ActualHeight));
-            if (!hole.IsEmpty) dc.DrawRectangle(MakeCheckerBrush(), null, hole);
+            dc.DrawRectangle(vb, null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
         }
         rtb.Render(dv);
         return rtb;
@@ -193,12 +204,6 @@ internal static class Snapshot
         return new DrawingBrush(g) { TileMode = TileMode.Tile, Viewport = new Rect(0, 0, 16, 16), ViewportUnits = BrushMappingMode.Absolute };
     }
 
-    private static void RenderElement(FrameworkElement el, string path, double scale = 2)
-    {
-        var rtb = RenderBitmap(el, scale);
-        if (rtb != null) Save(rtb, path);
-    }
-
     private static void Save(BitmapSource bmp, string path)
     {
         var enc = new PngBitmapEncoder();
@@ -207,36 +212,13 @@ internal static class Snapshot
         enc.Save(fs);
     }
 
-    private static void Crop(RenderTargetBitmap? full, FrameworkElement root, FrameworkElement el, string path)
+    private static void Crop(RenderTargetBitmap full, FrameworkElement root, FrameworkElement el, string path)
     {
-        if (full == null) return;
         var r = el.TransformToAncestor(root).TransformBounds(new Rect(0, 0, el.ActualWidth, el.ActualHeight));
         double s = full.PixelWidth / root.ActualWidth;
         var px = new Int32Rect((int)(r.X * s), (int)(r.Y * s),
             (int)Math.Min(r.Width * s, full.PixelWidth - r.X * s), (int)Math.Min(r.Height * s, full.PixelHeight - r.Y * s));
         if (px.Width <= 0 || px.Height <= 0) return;
         Save(new CroppedBitmap(full, px), path);
-    }
-
-    private static RenderTargetBitmap? RenderBitmap(FrameworkElement el, double scale)
-    {
-        el.UpdateLayout();
-        int pw = (int)Math.Ceiling(el.ActualWidth * scale), ph = (int)Math.Ceiling(el.ActualHeight * scale);
-        if (pw <= 0 || ph <= 0) return null;
-        var rtb = new RenderTargetBitmap(pw, ph, 96 * scale, 96 * scale, PixelFormats.Pbgra32);
-        var dv = new DrawingVisual();
-        using (var dc = dv.RenderOpen())
-        {
-            var bg = Application.Current.TryFindResource("SolidBackgroundFillColorBaseBrush") as Brush ?? Brushes.White;
-            dc.DrawRectangle(bg, null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
-            var vb = new VisualBrush(el)
-            {
-                Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top,
-                ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, el.ActualWidth, el.ActualHeight),
-            };
-            dc.DrawRectangle(vb, null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
-        }
-        rtb.Render(dv);
-        return rtb;
     }
 }

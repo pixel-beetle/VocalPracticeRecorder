@@ -19,7 +19,7 @@
 ## 开发
 
 - .NET 9 + WPF（Fluent 主题），NAudio 3（WASAPI 采集/回环，QPC 时间戳），Vortice（DXGI 桌面复制，GDI 兜底），FFmpeg（编码/导出）。
-- 透明取景框通过 Win32 `SetWindowRgn` 在常规硬件加速窗口上抠出穿透区域（保持 `MediaElement` 硬件解码与原生缩放），录制时动态启用 `WDA_EXCLUDEFROMCAPTURE`。
+- 透明取景框通过 `AllowsTransparency="True"`（关闭 .NET 9 Fluent 默认的 Windows 11 Mica 背景）+ Win32 `WM_NCHITTEST` 原生 8 方向缩放实现，透明区自动穿透，录制时动态启用 `WDA_EXCLUDEFROMCAPTURE`。
 - `dotnet test`：核心逻辑与不变量测试（对齐、帧精确剪辑导出、搬家、取景框几何、曲名清洗）。
 - `VocalPracticeRecorder.exe --selftest <report.txt> [秒]`：真机端到端录/编/导自检。
 - `VocalPracticeRecorder.exe --snapshot <outDir> demo`：离线渲染全状态 PNG（含 2× 局部特写与 Win32 抠洞断言，不修改用户配置）。
