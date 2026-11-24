@@ -1,0 +1,170 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "发布版本号（如 v0.3.2；留空则仅编译打包为构建产物，不创建 Release）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Resolve version and tag
+        run: |
+          if ("${{ github.event_name }}" -eq "push") {
+            $tag = "${{ github.ref_name }}"
+            $createRelease = "true"
+          } elseif ("${{ inputs.tag }}".Trim()) {
+            $tag = "${{ inputs.tag }}".Trim()
+            $createRelease = "true"
+          } else {
+            [xml]$proj = Get-Content "src/VocalPracticeRecorder/VocalPracticeRecorder.csproj"
+            $v = ($proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1).Trim()
+            $tag = "v$v-dev"
+            $createRelease = "false"
+          }
+          $appVersion = $tag.TrimStart('v', 'V')
+          "TAG_NAME=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_VERSION=$appVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CREATE_RELEASE=$createRelease" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Tag=$tag Version=$appVersion CreateRelease=$createRelease"
+
+      - name: Download FFmpeg static build
+        run: |
+          $ProgressPreference = "SilentlyContinue"
+          $tmp = Join-Path $env:RUNNER_TEMP "ffmpeg-release"
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $zip = Join-Path $tmp "ffmpeg.zip"
+          try {
+            Write-Host "Downloading FFmpeg essentials from gyan.dev..."
+            Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile $zip -TimeoutSec 240
+          } catch {
+            Write-Warning "gyan.dev 下载失败，改用 BtbN 镜像：$($_.Exception.Message)"
+            Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile $zip -TimeoutSec 240
+          }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $extractDir = Join-Path $tmp "extracted"
+          [IO.Compression.ZipFile]::ExtractToDirectory($zip, $extractDir)
+
+          $ff = Get-ChildItem -Path $extractDir -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
+          if (-not $ff) { throw "解压后未找到 ffmpeg.exe" }
+          $lic = Get-ChildItem -Path $extractDir -Filter "LICENSE*" -File -Recurse | Select-Object -First 1
+
+          $ff.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "FFMPEG_EXE=$($ff.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          if ($lic) {
+            "FFMPEG_LICENSE=$($lic.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          & $ff.FullName -version | Select-Object -First 2
+
+      - name: Run tests before packaging
+        run: dotnet test tests/VocalPracticeRecorder.Tests -c Release --verbosity normal
+
+      - name: Build single-file app and package zip
+        run: |
+          $distDir = Join-Path $PWD "dist"
+          New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+          $zipName = "VocalPracticeRecorder-$env:TAG_NAME-win-x64.zip"
+          $zipPath = Join-Path $distDir $zipName
+
+          $params = @{
+            Version    = $env:APP_VERSION
+            FfmpegPath = $env:FFMPEG_EXE
+            ZipPath    = $zipPath
+          }
+          if ($env:FFMPEG_LICENSE) {
+            $params.FfmpegLicensePath = $env:FFMPEG_LICENSE
+          }
+          .\publish.ps1 @params
+
+          # Verify zip contents and UTF-8 entry names
+          Add-Type -AssemblyName System.IO.Compression
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::Open($zipPath, [IO.Compression.ZipArchiveMode]::Read, [Text.UTF8Encoding]::new($false))
+          try {
+            $entries = @{}
+            foreach ($e in $archive.Entries) {
+              $norm = $e.FullName -replace '\\', '/'
+              $entries[$norm] = $e.Length
+              Write-Host ("  zip entry: {0} ({1:N1} MB)" -f $norm, ($e.Length / 1MB))
+            }
+            if (-not $entries.ContainsKey("练唱录制/练唱录制.exe") -or $entries["练唱录制/练唱录制.exe"] -lt 50MB) {
+              throw "压缩包缺少有效的 练唱录制/练唱录制.exe"
+            }
+            if (-not $entries.ContainsKey("练唱录制/ffmpeg.exe") -or $entries["练唱录制/ffmpeg.exe"] -lt 30MB) {
+              throw "压缩包缺少有效的 练唱录制/ffmpeg.exe"
+            }
+            if (-not $entries.ContainsKey("练唱录制/THIRD_PARTY_NOTICES.txt")) {
+              throw "压缩包缺少 THIRD_PARTY_NOTICES.txt"
+            }
+            $pdb = $entries.Keys | Where-Object { $_ -like "*.pdb" }
+            if ($pdb) {
+              throw "压缩包中不应包含调试符号文件：$($pdb -join ', ')"
+            }
+          } finally {
+            $archive.Dispose()
+          }
+
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $zipPath).Hash.ToLowerInvariant()
+          $shaPath = Join-Path $distDir "SHA256SUMS.txt"
+          [IO.File]::WriteAllText($shaPath, "$hash  $zipName`n", [Text.UTF8Encoding]::new($false))
+          "ZIP_PATH=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SHA_PATH=$shaPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VocalPracticeRecorder-${{ env.TAG_NAME }}-win-x64
+          path: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.SHA_PATH }}
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        if: env.CREATE_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @"
+          ## 下载与使用
+
+          1. 下载下方 **$($env:ZIP_NAME)** 并**完整解压**整个 ``练唱录制`` 文件夹（请保持 ``练唱录制.exe`` 和 ``ffmpeg.exe`` 在同一个文件夹里，不要只单独拖出 exe）。
+          2. 双击 ``练唱录制.exe`` 即可使用，无需安装 .NET 或 FFmpeg。
+          3. 首次运行若 Windows SmartScreen 弹出「Windows 已保护你的电脑」，点击**「更多信息」→「仍要运行」**即可。
+
+          > 系统要求：Windows 10（2004 及以上）或 Windows 11 64 位。
+          "@
+
+          gh release view $env:TAG_NAME *>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG_NAME $env:ZIP_PATH $env:SHA_PATH --clobber
+            gh release edit $env:TAG_NAME --title "练唱录制 $env:TAG_NAME" --notes $notes
+          } else {
+            gh release create $env:TAG_NAME $env:ZIP_PATH $env:SHA_PATH `
+              --target $env:GITHUB_SHA `
+              --title "练唱录制 $env:TAG_NAME" `
+              --notes $notes `
+              --generate-notes
+          }

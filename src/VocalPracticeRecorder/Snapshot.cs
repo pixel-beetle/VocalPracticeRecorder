@@ -175,7 +175,7 @@ internal static class Snapshot
         sw.Show();
         await Task.Delay(300);
         await sw.ShowConfirmPreviewForSnapshotAsync("把现有的 3 遍录音（68 MB）一起移动到新位置？",
-            "目标：F:\\VocalCoverVideos\\Practice\n「仅改位置」会把旧录音留在原处，不再显示在列表里。");
+            "目标：D:\\VocalPractice\n「仅改位置」会把旧录音留在原处，不再显示在列表里。");
         await Task.Delay(150);
         Save(RenderOverSolid((FrameworkElement)sw.Content, 2), Path.Combine(outDir, "13-settings-confirm-2x.png"));
         sw.Close();

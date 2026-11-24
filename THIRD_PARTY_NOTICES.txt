@@ -1,0 +1,25 @@
+Third-Party Software Notices
+============================
+
+VocalPracticeRecorder itself is licensed under the MIT License (see LICENSE).
+Release packages bundle or depend on the following third-party open-source components:
+
+1. FFmpeg (bundled as ffmpeg.exe in release archives)
+   - License: GNU General Public License v3.0 (GPLv3) for the bundled GPL static build
+     (see FFMPEG-LICENSE.txt included alongside ffmpeg.exe in release archives,
+     or https://www.gnu.org/licenses/gpl-3.0.html).
+   - VocalPracticeRecorder invokes ffmpeg.exe as a separate command-line process
+     and does not link against FFmpeg libraries.
+   - FFmpeg source code: https://ffmpeg.org/download.html
+   - Windows static build providers:
+     * https://www.gyan.dev/ffmpeg/builds/
+     * https://github.com/BtbN/FFmpeg-Builds
+
+2. NAudio (https://github.com/naudio/NAudio)
+   - License: MIT License
+
+3. Vortice.Windows (https://github.com/amerkoleci/Vortice.Windows)
+   - License: MIT License
+
+4. .NET Runtime & WPF (https://github.com/dotnet/runtime, https://github.com/dotnet/wpf)
+   - License: MIT License
