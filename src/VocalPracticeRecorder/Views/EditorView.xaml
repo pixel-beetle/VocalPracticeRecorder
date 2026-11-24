@@ -3,127 +3,117 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ed="clr-namespace:VocalPracticeRecorder.Editing"
              Focusable="True" FocusVisualStyle="{x:Null}">
-    <Grid Margin="16,12,16,12">
+    <Grid Margin="14,10,14,12">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="160" />
-            <RowDefinition Height="170" />
+            <RowDefinition Height="166" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,8">
-            <ToggleButton x:Name="StarButton" DockPanel.Dock="Right" Content="☆ 标为最佳" Click="OnStar" Padding="10,4" />
-            <TextBlock x:Name="TakeInfo" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0"
-                       Foreground="{StaticResource SubtleTextBrush}" />
-            <TextBox x:Name="TitleBox" FontSize="18" FontWeight="SemiBold" BorderThickness="0" Background="Transparent"
-                     ToolTip="曲名（自动从浏览器标题识别，可修改）" LostFocus="OnTitleCommitted" KeyDown="OnTitleKey" />
-        </DockPanel>
-
         <!-- Video -->
-        <Border Grid.Row="1" Background="Black" CornerRadius="6" ClipToBounds="True">
+        <Border Grid.Row="0" Background="Black" CornerRadius="6" ClipToBounds="True">
             <MediaElement x:Name="Video" LoadedBehavior="Manual" UnloadedBehavior="Manual" ScrubbingEnabled="True"
                           IsMuted="True" Stretch="Uniform" />
         </Border>
 
         <!-- Timeline -->
-        <Border Grid.Row="2" Margin="0,8,0,0" CornerRadius="6" ClipToBounds="True">
+        <Border Grid.Row="1" Margin="0,8,0,0" CornerRadius="6" ClipToBounds="True">
             <ed:TimelineControl x:Name="Timeline" ToolTipService.InitialShowDelay="800" />
         </Border>
 
-        <!-- Transport -->
-        <StackPanel Grid.Row="3" Margin="0,8,0,0">
-            <StackPanel Orientation="Horizontal">
-                <Button x:Name="PlayButton" Content="▶ 播放" Click="OnPlay" MinWidth="90" ToolTip="空格" />
-                <TextBlock x:Name="TimeText" VerticalAlignment="Center" Margin="10,0" FontFamily="Consolas" FontSize="14" Text="0:00.00" />
-                <Button Content="[ 入点" Click="OnSetIn" Margin="6,0,0,0" ToolTip="把播放头位置设为开头 (I)" />
-                <Button Content="出点 ]" Click="OnSetOut" Margin="4,0,0,0" ToolTip="把播放头位置设为结尾 (O)" />
-                <Button Content="重置" Click="OnResetTrim" Margin="4,0,0,0" ToolTip="清除头尾裁剪和所有删除" />
-                <Button x:Name="DeleteSelButton" Content="✂ 删除选区" Click="OnDeleteSelection" Margin="12,0,0,0" IsEnabled="False"
-                        ToolTip="在波形上拖动选出一段，按 Delete 删除；右键红色片段可恢复" />
-                <Button x:Name="SplitButton" Content="拆分" Click="OnSplit" Margin="4,0,0,0"
-                        ToolTip="在播放头处把这一遍拆成两个 take (S)" />
-            </StackPanel>
-            <TextBlock x:Name="TrimText" Margin="2,6,0,0" Foreground="{StaticResource SubtleTextBrush}" TextTrimming="CharacterEllipsis" />
-        </StackPanel>
+        <!-- Transport (single compact row) -->
+        <DockPanel Grid.Row="2" Margin="0,8,0,0" LastChildFill="False">
+            <Button x:Name="PlayButton" Content="▶" Click="OnPlay" Width="46" ToolTip="播放 / 暂停 (Space)" />
+            <TextBlock x:Name="TimeText" VerticalAlignment="Center" Margin="10,0" FontFamily="Consolas" FontSize="14" Text="0:00.00" />
+            <Button Content="[ 入点" Click="OnSetIn" Margin="4,0,0,0" ToolTip="设为开头 (I)" />
+            <Button Content="出点 ]" Click="OnSetOut" Margin="4,0,0,0" ToolTip="设为结尾 (O)" />
+            <Button Content="重置" Click="OnResetTrim" Margin="4,0,0,0" ToolTip="清除裁剪和删除" />
+            <Button x:Name="DeleteSelButton" Content="✂ 删除" Click="OnDeleteSelection" Margin="10,0,0,0" IsEnabled="False"
+                    ToolTip="删除拖动选出的片段 (Delete)；右键红色块恢复" />
+            <Button x:Name="SplitButton" Content="拆分" Click="OnSplit" Margin="4,0,0,0"
+                    ToolTip="在播放头处拆分为两个 take (S)" />
+            <TextBlock x:Name="TrimText" DockPanel.Dock="Right" VerticalAlignment="Center"
+                       Foreground="{StaticResource SubtleTextBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
+        </DockPanel>
 
-        <!-- Mix controls -->
-        <Grid Grid.Row="4" Margin="0,12,0,0">
+        <!-- Mix & alignment -->
+        <Grid Grid.Row="3" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="24" />
+                <ColumnDefinition Width="14" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <StackPanel>
-                <TextBlock Text="人声对齐（← → 微调 10ms，Shift 50ms）" Style="{StaticResource SectionTitle}" Margin="0,0,0,4" />
-                <StackPanel Orientation="Horizontal">
+
+            <!-- Vocal alignment -->
+            <StackPanel VerticalAlignment="Center" ToolTip="人声偏移：键盘 ← → ±10ms，Shift ±50ms">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="−50" Click="OnNudge" Tag="-50" Style="{StaticResource IconButton}" />
-                    <Button Content="−10" Click="OnNudge" Tag="-10" Style="{StaticResource IconButton}" Margin="4,0" />
-                    <TextBlock x:Name="OffsetText" Width="110" TextAlignment="Center" VerticalAlignment="Center" FontSize="15"
+                    <Button Content="−10" Click="OnNudge" Tag="-10" Style="{StaticResource IconButton}" Margin="3,0" />
+                    <TextBlock x:Name="OffsetText" Width="64" TextAlignment="Center" VerticalAlignment="Center" FontSize="13.5"
                                FontFamily="Consolas" Text="0 ms" />
-                    <Button Content="+10" Click="OnNudge" Tag="10" Style="{StaticResource IconButton}" Margin="4,0" />
+                    <Button Content="+10" Click="OnNudge" Tag="10" Style="{StaticResource IconButton}" Margin="3,0" />
                     <Button Content="+50" Click="OnNudge" Tag="50" Style="{StaticResource IconButton}" />
-                    <Button Content="自动对齐" Click="OnAutoAlign" Margin="10,0,0,0" />
-                    <Button x:Name="SuggestButton" Click="OnTrySuggestion" Margin="6,0,0,0" Visibility="Collapsed"
-                            ToolTip="检测到一个可能的延迟，但把握不够大。点一下试听，不对再按 Ctrl+Z 撤销" />
+                    <Button Content="对齐" Click="OnAutoAlign" Margin="6,0,0,0" ToolTip="自动对齐" Padding="10,4" MinWidth="0" />
+                    <Button x:Name="SuggestButton" Click="OnTrySuggestion" Margin="4,0,0,0" Padding="8,4" MinWidth="0" Visibility="Collapsed"
+                            ToolTip="检测到的候选延迟，点一下试听，不对按 Ctrl+Z 撤销" />
                 </StackPanel>
-                <TextBlock x:Name="AlignText" Margin="0,6,0,0" Foreground="{StaticResource SubtleTextBrush}" TextWrapping="Wrap" MaxWidth="440"
-                           HorizontalAlignment="Left" />
+                <TextBlock x:Name="AlignBadge" Margin="2,4,0,0" FontSize="11" Foreground="{StaticResource SubtleTextBrush}" />
             </StackPanel>
-            <Grid Grid.Column="2">
+
+            <!-- Levels -->
+            <Grid Grid.Column="2" VerticalAlignment="Center">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="64" />
+                    <ColumnDefinition Width="*" MinWidth="80" />
+                    <ColumnDefinition Width="46" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <TextBlock Text="人声" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource VocalBrush}" />
+                <TextBlock Text="人声" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource VocalBrush}" />
                 <Slider x:Name="VocalGain" Grid.Column="1" Minimum="-24" Maximum="18" TickFrequency="1" IsSnapToTickEnabled="True"
                         VerticalAlignment="Center" ValueChanged="OnGainChanged" Thumb.DragStarted="OnSliderDragStarted" />
-                <TextBlock x:Name="VocalGainText" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right" />
-                <ComboBox x:Name="ChannelBox" Grid.Column="3" Margin="10,0,0,0" MinWidth="120" SelectionChanged="OnChannelChanged"
-                          ToolTip="声卡输入通道。Scarlett Solo 的麦克风在通道 1（左）">
-                    <ComboBoxItem Content="输入 1（左）" />
-                    <ComboBoxItem Content="输入 2（右）" />
+                <TextBlock x:Name="VocalGainText" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right" FontSize="12" />
+                <ComboBox x:Name="ChannelBox" Grid.Column="3" Margin="8,0,0,0" MinWidth="98" Height="28" Padding="8,0,22,0"
+                          VerticalContentAlignment="Center" FontSize="12" SelectionChanged="OnChannelChanged" ToolTip="麦克风输入通道">
+                    <ComboBoxItem Content="通道 1 (左)" />
+                    <ComboBoxItem Content="通道 2 (右)" />
                     <ComboBoxItem Content="1+2 混合" />
                 </ComboBox>
 
-                <TextBlock Grid.Row="1" Text="伴奏" VerticalAlignment="Center" Margin="0,8,8,0" Foreground="{StaticResource BackingBrush}" />
+                <TextBlock Grid.Row="1" Text="伴奏" VerticalAlignment="Center" Margin="0,6,6,0" Foreground="{StaticResource BackingBrush}" />
                 <Slider x:Name="BackingGain" Grid.Row="1" Grid.Column="1" Minimum="-30" Maximum="12" TickFrequency="1" IsSnapToTickEnabled="True"
-                        VerticalAlignment="Center" Margin="0,8,0,0" ValueChanged="OnGainChanged" Thumb.DragStarted="OnSliderDragStarted" />
-                <TextBlock x:Name="BackingGainText" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right" Margin="0,8,0,0" />
-                <CheckBox x:Name="BackingMute" Grid.Row="1" Grid.Column="3" Content="不混入伴奏" Margin="10,8,0,0"
-                          Click="OnMuteChanged" ToolTip="外放录音时麦克风里已经有伴奏，可以不再混入电脑内录的伴奏" />
+                        VerticalAlignment="Center" Margin="0,6,0,0" ValueChanged="OnGainChanged" Thumb.DragStarted="OnSliderDragStarted" />
+                <TextBlock x:Name="BackingGainText" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right" FontSize="12" Margin="0,6,0,0" />
+                <CheckBox x:Name="BackingMute" Grid.Row="1" Grid.Column="3" Content="静音" Margin="8,6,0,0"
+                          Click="OnMuteChanged" ToolTip="不混入伴奏" />
             </Grid>
         </Grid>
 
         <!-- Export -->
-        <Border Grid.Row="5" Margin="0,14,0,0" Padding="12" CornerRadius="6" BorderThickness="1"
+        <Border Grid.Row="4" Margin="0,12,0,0" Padding="10,8" CornerRadius="6" BorderThickness="1"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
-                    <TextBlock Text="导出：" VerticalAlignment="Center" FontWeight="SemiBold" />
-                    <RadioButton x:Name="KindVideo" Content="视频 MP4" GroupName="kind" Margin="6,0" IsChecked="True" />
-                    <RadioButton x:Name="KindMix" Content="混音 MP3" GroupName="kind" Margin="6,0" />
-                    <RadioButton x:Name="KindDry" Content="干声 MP3" GroupName="kind" Margin="6,0" />
-                    <Button x:Name="ExportButton" Content="导出 (Ctrl+E)" Click="OnExport" Margin="12,0,0,0"
+                    <RadioButton x:Name="KindVideo" Content="MP4" GroupName="kind" Margin="2,0,8,0" IsChecked="True" />
+                    <RadioButton x:Name="KindMix" Content="混音 MP3" GroupName="kind" Margin="0,0,8,0" />
+                    <RadioButton x:Name="KindDry" Content="干声 MP3" GroupName="kind" Margin="0,0,10,0" />
+                    <Button x:Name="ExportButton" Content="导出" Click="OnExport" ToolTip="导出 (Ctrl+E)"
                             Style="{StaticResource AccentButtonStyle}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
-                    <Button x:Name="RevealButton" Content="在文件夹中显示" Click="OnReveal" IsEnabled="False" />
+                    <Button x:Name="RevealButton" Content="打开位置" Click="OnReveal" IsEnabled="False" />
                     <Button x:Name="CopyButton" Content="复制文件" Click="OnCopyFile" IsEnabled="False" Margin="6,0,0,0"
-                            ToolTip="复制后可直接粘贴到微信「文件传输助手」" />
+                            ToolTip="复制后直接 Ctrl+V 粘贴到微信" />
                 </StackPanel>
                 <Grid Margin="12,0" VerticalAlignment="Center">
                     <ProgressBar x:Name="ExportProgress" Height="4" Minimum="0" Maximum="1" Visibility="Collapsed" VerticalAlignment="Bottom" />
-                    <TextBlock x:Name="ExportText" Foreground="{StaticResource SubtleTextBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,0,6" />
+                    <TextBlock x:Name="ExportText" Foreground="{StaticResource SubtleTextBrush}" FontSize="12"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                 </Grid>
             </DockPanel>
         </Border>

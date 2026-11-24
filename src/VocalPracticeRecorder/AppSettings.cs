@@ -12,6 +12,13 @@ public sealed class AppSettings
     public int? RegionY { get; set; }
     public int? RegionW { get; set; }
     public int? RegionH { get; set; }
+    /// <summary>Saved physical bounds of the main window in capture mode.</summary>
+    public int? WindowX { get; set; }
+    public int? WindowY { get; set; }
+    public int? WindowW { get; set; }
+    public int? WindowH { get; set; }
+    public bool SidebarOpen { get; set; }
+    public bool TopmostInCapture { get; set; } = true;
     public int Fps { get; set; } = 20;
     public int MaxHeight { get; set; } = 720;
     public ExportKind LastExportKind { get; set; } = ExportKind.MixVideo;
@@ -50,6 +57,20 @@ public sealed class AppSettings
         }
     }
 
+    [System.Text.Json.Serialization.JsonIgnore]
+    public PixelRect? CaptureWindowBounds
+    {
+        get => WindowW is > 0 && WindowH is > 0 ? new PixelRect(WindowX ?? 0, WindowY ?? 0, WindowW.Value, WindowH.Value) : null;
+        set
+        {
+            WindowX = value?.X; WindowY = value?.Y; WindowW = value?.Width; WindowH = value?.Height;
+        }
+    }
+
+    /// <summary>Set false for headless snapshot/test runs so they never overwrite the user's real settings.json.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool Persist { get; set; } = true;
+
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VocalPracticeRecorder", "settings.json");
 
@@ -73,6 +94,7 @@ public sealed class AppSettings
 
     public void Save()
     {
+        if (!Persist) return;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);

@@ -41,21 +41,19 @@ public static class Library
         return list;
     }
 
-    /// <summary>Human readable tags shown under each take.</summary>
+    /// <summary>Concise tags shown under each take (star is already shown next to the title).</summary>
     public static List<string> Tags(SessionInfo s)
     {
-        var tags = new List<string>();
-        if (s.Starred) tags.Add("最佳");
-        tags.Add(FormatDuration(s.Duration));
+        var tags = new List<string> { FormatDuration(s.Duration) };
         switch (s.Edit.AlignMode)
         {
-            case AlignMode.Auto: tags.Add($"自动对齐 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
+            case AlignMode.Auto: tags.Add($"{s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
             case AlignMode.Remembered: tags.Add($"沿用 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
-            case AlignMode.Calibrated: tags.Add($"设备延迟 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
+            case AlignMode.Calibrated: tags.Add($"校准 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
             case AlignMode.Manual: tags.Add($"手动 {s.Edit.VocalOffsetMs:+0;-0;0}ms"); break;
         }
         bool trimmed = s.Edit.TrimStart > 0.05 || (s.Edit.TrimEnd > 0 && s.Edit.TrimEnd < s.Duration - 0.05) || s.Edit.Cuts.Count > 0;
-        if (trimmed) tags.Add($"已剪 → {FormatDuration(EditTimeline.OutputDuration(s))}");
+        if (trimmed) tags.Add($"→ {FormatDuration(EditTimeline.OutputDuration(s))}");
         if (s.Exports.Count > 0) tags.Add("已导出");
         if (s.Incomplete) tags.Add("未完成");
         return tags;
@@ -73,6 +71,14 @@ public static class Library
         if (seconds < 0 || double.IsNaN(seconds)) seconds = 0;
         var t = TimeSpan.FromSeconds(seconds);
         return $"{(int)t.TotalMinutes}:{t.Seconds:00}.{t.Milliseconds / 10:00}";
+    }
+
+    /// <summary>Maps linear audio peak to 0..1 over a -60..0 dBFS meter range.</summary>
+    public static double PeakToMeter(float peak)
+    {
+        if (peak <= 1e-6f) return 0;
+        double db = 20 * Math.Log10(peak);
+        return Math.Clamp((db + 60) / 60, 0, 1);
     }
 }
 

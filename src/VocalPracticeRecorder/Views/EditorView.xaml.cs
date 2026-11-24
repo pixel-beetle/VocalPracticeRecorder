@@ -24,10 +24,11 @@ public partial class EditorView : UserControl
     private bool _loading = true;
     private bool _videoPlaying;
     private int _syncCounter;
+    private long _lastJumps;
     private string? _lastExport;
     private CancellationTokenSource? _exportCts;
 
-    /// <summary>Raised after title/star/edit changes are saved, so the library can refresh.</summary>
+    /// <summary>Raised after edit/split/export changes are saved, so the library can refresh.</summary>
     public event Action<SessionInfo, bool>? SessionChanged;
 
     public SessionInfo Session => _s;
@@ -40,9 +41,6 @@ public partial class EditorView : UserControl
         _settings = settings;
         _take = takeNumber;
 
-        TitleBox.Text = s.SongTitle;
-        TakeInfo.Text = $"Take {takeNumber} · {s.CreatedAt:yyyy/MM/dd HH:mm} · {Library.FormatDuration(s.Duration)}";
-        UpdateStar();
         ChannelBox.SelectedIndex = (int)s.Edit.MicChannel;
         if (s.Mic.Channels < 2) ChannelBox.IsEnabled = false;
         VocalGain.Value = s.Edit.VocalGainDb;
@@ -66,7 +64,7 @@ public partial class EditorView : UserControl
 
         _engine = new PlaybackEngine(s, audio);
         _engine.Ended += () => Dispatcher.BeginInvoke(OnEnded);
-        if (_engine.OutputError != null) ExportText.Text = "⚠ 无法打开播放设备：" + _engine.OutputError;
+        if (_engine.OutputError != null) ExportText.Text = "⚠ 无法播放：" + _engine.OutputError;
 
         Video.MediaOpened += (_, _) => { Video.Pause(); Video.Position = TimeSpan.Zero; };
         Video.Source = new Uri(s.PathOf(s.Video.File));
@@ -88,10 +86,7 @@ public partial class EditorView : UserControl
     private void Seek(double t)
     {
         t = Math.Clamp(t, 0, _s.Duration);
-        if (_engine.IsPlaying)
-        {
-            _engine.Play(t, _s.EffectiveTrimEnd);
-        }
+        if (_engine.IsPlaying) _engine.Play(t, _s.EffectiveTrimEnd);
         else _engine.Seek(t);
         Video.Position = TimeSpan.FromSeconds(t);
         Timeline.Playhead = t;
@@ -106,7 +101,7 @@ public partial class EditorView : UserControl
             Video.Pause();
             _videoPlaying = false;
             Video.Position = TimeSpan.FromSeconds(_engine.Position);
-            PlayButton.Content = "▶ 播放";
+            PlayButton.Content = "▶";
             return;
         }
         double from = Timeline.Selection?.Start ?? Timeline.Playhead;
@@ -115,18 +110,16 @@ public partial class EditorView : UserControl
         Video.Position = TimeSpan.FromSeconds(from);
         Video.Play();
         _videoPlaying = true;
-        PlayButton.Content = "⏸ 暂停";
+        PlayButton.Content = "⏸";
     }
 
     private void OnEnded()
     {
         Video.Pause();
         _videoPlaying = false;
-        PlayButton.Content = "▶ 播放";
+        PlayButton.Content = "▶";
         Timeline.Playhead = _engine.Position;
     }
-
-    private long _lastJumps;
 
     private void OnUiTick(object? sender, EventArgs e)
     {
@@ -138,7 +131,6 @@ public partial class EditorView : UserControl
         long jumps = _engine.JumpCount;
         if (_videoPlaying && jumps != _lastJumps)
         {
-            // Playback skipped a deleted section: move the picture with it immediately.
             _lastJumps = jumps;
             Video.Position = TimeSpan.FromSeconds(pos);
         }
@@ -198,7 +190,6 @@ public partial class EditorView : UserControl
         BeginEdit();
         _s.Edit.VocalOffsetMs = Math.Round(_s.Edit.VocalOffsetMs + ms);
         _s.Edit.AlignMode = AlignMode.Manual;
-        // Headphone case: remember the hand-tuned value for this device pair.
         if (!_s.Edit.AutoReliable)
         {
             _settings.RememberedOffsets[_s.DeviceComboKey] = _s.Edit.VocalOffsetMs;
@@ -229,7 +220,7 @@ public partial class EditorView : UserControl
         if (_s.Edit.AutoDelayMs is not { } d) return;
         BeginEdit();
         _s.Edit.VocalOffsetMs = Math.Round(-d);
-        _s.Edit.AlignMode = AlignMode.Manual; // deliberately not remembered: it is a speaker-mode guess
+        _s.Edit.AlignMode = AlignMode.Manual;
         MarkDirty();
         Focus();
     }
@@ -305,11 +296,10 @@ public partial class EditorView : UserControl
         }
         catch (InvalidOperationException ex)
         {
-            MessageBox.Show(Window.GetWindow(this), ex.Message + "\n\n先把播放头移到要拆开的位置（两遍之间），再点「拆分」。", "无法拆分",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(Window.GetWindow(this), ex.Message, "无法拆分", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        _undo.Clear(); // the split itself is a file operation; undoing trims across it would desync the two takes
+        _undo.Clear();
         second.Save();
         _s.Save();
         await SessionPostProcessor.MakeThumbnailAsync(second);
@@ -354,59 +344,29 @@ public partial class EditorView : UserControl
         VocalGainText.Text = $"{e.VocalGainDb:+0;−0;0} dB";
         BackingGainText.Text = $"{e.BackingGainDb:+0;−0;0} dB";
         BackingGain.IsEnabled = !e.BackingMuted;
+
         double len = EditTimeline.OutputDuration(_s);
-        string cuts = e.Cuts.Count > 0 ? $"，删除 {e.Cuts.Count} 段" : "";
-        string sel = Timeline.Selection is { } r ? $"   ·   选区 {Library.FormatTimecode(r.Start)} – {Library.FormatTimecode(r.End)}（{r.Length:0.0} 秒，按 Delete 删除）" : "";
-        TrimText.Text = $"成品 {Library.FormatDuration(len)}   ·   {Library.FormatTimecode(e.TrimStart)} → {Library.FormatTimecode(_s.EffectiveTrimEnd)}{cuts}{sel}";
-        string dir = e.VocalOffsetMs < 0 ? $"人声提前 {-e.VocalOffsetMs:0} ms" : e.VocalOffsetMs > 0 ? $"人声推后 {e.VocalOffsetMs:0} ms" : "未偏移";
-        AlignText.Text = e.AlignMode switch
+        var parts = new List<string> { Library.FormatDuration(len) };
+        if (e.Cuts.Count > 0) parts.Add($"删 {e.Cuts.Count} 段");
+        if (Timeline.Selection is { } r) parts.Add($"选 {r.Length:0.0}s");
+        TrimText.Text = string.Join(" · ", parts);
+        TrimText.ToolTip = $"{Library.FormatTimecode(e.TrimStart)} → {Library.FormatTimecode(_s.EffectiveTrimEnd)}";
+
+        (string label, string tip) = e.AlignMode switch
         {
-            AlignMode.Auto => $"✓ 外放模式：在麦克风里检测到伴奏，已自动对齐（{dir}）。",
-            AlignMode.Remembered => $"未检测到伴奏回声（可能戴了耳机），已沿用这组设备上次手调的值（{dir}）。边听边用 ← → 微调。",
-            AlignMode.Calibrated => $"未检测到伴奏回声（可能戴了耳机），已按之前外放录音测得的设备延迟对齐（{dir}）。不准的话用 ← → 微调。",
-            AlignMode.Manual => $"手动调整：{dir}。" + (e.AutoReliable
-                ? $"（自动检测值 {-(e.AutoDelayMs ?? 0):+0;−0;0} ms）" : "调好的值会记住，下次用同样设备时自动套用。"),
-            _ => "未检测到伴奏回声（可能戴了耳机）。边听边用 ← → 微调，调好的值会记住给下次用。",
+            AlignMode.Auto => ("✓ 自动对齐", "从麦克风伴奏回声自动测得"),
+            AlignMode.Remembered => ("沿用上次", "沿用同设备手动调好的偏移"),
+            AlignMode.Calibrated => ("设备延迟", "按外放录音测得的设备延迟对齐"),
+            AlignMode.Manual => ("手动", e.AutoReliable ? $"自动检测值 {-(e.AutoDelayMs ?? 0):+0;−0;0} ms" : "已为当前设备记住"),
+            _ => ("", ""),
         };
-        bool suggest = !e.AutoReliable && e.AutoDelayMs is { } ad && Math.Abs(e.VocalOffsetMs + Math.Round(ad)) > 1
-                       && Math.Abs(ad) >= 5;
+        AlignBadge.Text = label;
+        AlignBadge.ToolTip = string.IsNullOrEmpty(tip) ? null : tip;
+        AlignBadge.Visibility = string.IsNullOrEmpty(label) ? Visibility.Collapsed : Visibility.Visible;
+
+        bool suggest = !e.AutoReliable && e.AutoDelayMs is { } ad && Math.Abs(e.VocalOffsetMs + Math.Round(ad)) > 1 && Math.Abs(ad) >= 5;
         SuggestButton.Visibility = suggest ? Visibility.Visible : Visibility.Collapsed;
-        if (suggest) SuggestButton.Content = $"试用检测值 {-e.AutoDelayMs!.Value:+0;−0;0} ms";
-        if (suggest && e.AlignMode is AlignMode.None or AlignMode.Remembered)
-            AlignText.Text = "找到一个可能的延迟，但把握不大（伴奏声小或戴了耳机）。可以点「试用检测值」试听，不对就 Ctrl+Z；也可以用 ← → 微调。";
-    }
-
-    // ---------- Header ----------
-
-    private void OnTitleKey(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter) { CommitTitle(); Focus(); e.Handled = true; }
-        else if (e.Key == Key.Escape) { TitleBox.Text = _s.SongTitle; Focus(); e.Handled = true; }
-    }
-
-    private void OnTitleCommitted(object sender, RoutedEventArgs e) => CommitTitle();
-
-    private void CommitTitle()
-    {
-        var t = TitleBox.Text.Trim();
-        if (t.Length == 0 || t == _s.SongTitle) { TitleBox.Text = _s.SongTitle; return; }
-        _s.SongTitle = t;
-        _s.Save();
-        SessionChanged?.Invoke(_s, true);
-    }
-
-    private void UpdateStar()
-    {
-        StarButton.IsChecked = _s.Starred;
-        StarButton.Content = _s.Starred ? "★ 最佳" : "☆ 标为最佳";
-    }
-
-    private void OnStar(object sender, RoutedEventArgs e)
-    {
-        _s.Starred = !_s.Starred;
-        UpdateStar();
-        _s.Save();
-        SessionChanged?.Invoke(_s, true);
+        if (suggest) SuggestButton.Content = $"试用 {-e.AutoDelayMs!.Value:+0;−0;0}ms";
     }
 
     // ---------- Export ----------
@@ -426,14 +386,13 @@ public partial class EditorView : UserControl
         _settings.Save();
         Directory.CreateDirectory(_settings.ExportsDir);
         var path = Path.Combine(_settings.ExportsDir, ExportBuilder.DefaultFileName(_s, _take, kind));
-        double length = _s.EffectiveTrimEnd - _s.Edit.TrimStart;
+        double length = Math.Max(0.1, EditTimeline.OutputDuration(_s));
 
         ExportButton.IsEnabled = false;
         ExportProgress.Visibility = Visibility.Visible;
         ExportProgress.Value = 0;
-        ExportText.Text = $"正在导出 {ExportBuilder.KindLabel(kind)}…";
+        ExportText.Text = "导出中…";
         _exportCts = new CancellationTokenSource();
-        var sw = Stopwatch.StartNew();
         try
         {
             var args = ExportBuilder.BuildArgs(_s, kind, path, _settings.Export);
@@ -442,13 +401,13 @@ public partial class EditorView : UserControl
                 sec => Dispatcher.BeginInvoke(() => ExportProgress.Value = Math.Clamp(sec / length, 0, 1)), _exportCts.Token));
             _s.Exports.Add(new ExportRecord { Path = path, Kind = kind, At = DateTime.Now });
             _s.Save();
-            ShowExported(path, sw.Elapsed.TotalSeconds);
+            ShowExported(path);
             SessionChanged?.Invoke(_s, false);
         }
         catch (Exception ex)
         {
             Log.Error("export", ex);
-            ExportText.Text = "导出失败：" + ex.Message.Split('\n')[0];
+            ExportText.Text = "失败：" + ex.Message.Split('\n')[0];
             MessageBox.Show(Window.GetWindow(this), ex.Message, "导出失败", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
@@ -460,11 +419,11 @@ public partial class EditorView : UserControl
         }
     }
 
-    private void ShowExported(string path, double? seconds = null)
+    private void ShowExported(string path)
     {
         _lastExport = path;
         double mb = new FileInfo(path).Length / 1024.0 / 1024.0;
-        ExportText.Text = $"✓ {Path.GetFileName(path)}（{mb:0.0} MB）" + (seconds.HasValue ? $" · 用时 {seconds:0.0}s" : "");
+        ExportText.Text = $"✓ {mb:0.0} MB · {Path.GetFileName(path)}";
         ExportText.ToolTip = path;
         RevealButton.IsEnabled = true;
         CopyButton.IsEnabled = true;
@@ -480,12 +439,11 @@ public partial class EditorView : UserControl
     {
         if (_lastExport == null) return;
         Clipboard.SetFileDropList(new StringCollection { _lastExport });
-        ExportText.Text = "已复制，可以到微信里粘贴发送（Ctrl+V）";
+        ExportText.Text = "✓ 已复制";
     }
 
     // ---------- Keyboard ----------
 
-    /// <summary>Editor shortcuts; returns true if handled.</summary>
     public bool HandleKey(KeyEventArgs e)
     {
         bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);

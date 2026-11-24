@@ -87,4 +87,44 @@ public class RegionMathTests
         Assert.True(oh <= max);
         Assert.InRange((double)ow / oh, (double)w / h * 0.98, (double)w / h * 1.02);
     }
+
+    [Fact]
+    public void Window_local_hole_keeps_border_and_handles_negative_monitor_coords()
+    {
+        var win = new PixelRect(-1200, 100, 1000, 700);
+        var vp = new PixelRect(-1194, 150, 988, 644);
+        var h = RegionMath.WindowLocalHole(win, vp, minBorder: 3);
+        Assert.Equal(new PixelRect(6, 50, 988, 644), h);
+        // Even if viewport touches the outer window edge, minBorder is preserved for resize hit-testing.
+        var clamped = RegionMath.WindowLocalHole(win, win, minBorder: 4);
+        Assert.Equal(new PixelRect(4, 4, 992, 692), clamped);
+        // Too small yields empty (no hole).
+        Assert.True(RegionMath.WindowLocalHole(win, new PixelRect(-1190, 150, 20, 20)).IsEmpty);
+    }
+
+    [Fact]
+    public void Expand_for_editor_keeps_large_window_and_clamps_small_window_in_work_area()
+    {
+        var work = new PixelRect(0, 0, 1920, 1040);
+        // Already large enough -> untouched (zero jump).
+        var big = new PixelRect(100, 80, 1280, 800);
+        Assert.Equal(big, RegionMath.ExpandForEditor(big, work, 980, 680));
+        // Small window near bottom-right corner -> grows to min size and stays strictly inside work area.
+        var small = new PixelRect(1200, 600, 640, 400);
+        var exp = RegionMath.ExpandForEditor(small, work, 980, 680);
+        Assert.Equal(980, exp.Width);
+        Assert.Equal(680, exp.Height);
+        Assert.True(exp.X >= work.X && exp.Y >= work.Y && exp.Right <= work.Right && exp.Bottom <= work.Bottom);
+    }
+
+    [Fact]
+    public void Clamp_window_to_monitors_rescues_offscreen_saved_bounds()
+    {
+        var mons = new List<PixelRect> { new(0, 0, 1920, 1080) };
+        var unpluggedSecondMonitor = new PixelRect(2500, 200, 1000, 700);
+        var c = RegionMath.ClampWindowToMonitors(unpluggedSecondMonitor, mons);
+        Assert.True(c.X >= 0 && c.Y >= 0 && c.Right <= 1920 && c.Bottom <= 1080);
+        Assert.Equal(1000, c.Width);
+        Assert.Equal(700, c.Height);
+    }
 }

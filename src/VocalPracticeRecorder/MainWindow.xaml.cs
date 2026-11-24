@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using NAudio.CoreAudioApi;
@@ -21,7 +22,7 @@ public sealed class TakeItem
     public required string Group { get; init; }
     public required int TakeNumber { get; init; }
     public string Header => $"Take {TakeNumber} · {Session.CreatedAt:MM/dd HH:mm}";
-    public string StarMark => Session.Starred ? "  ★" : "";
+    public string StarMark => Session.Starred ? " ★" : "";
     public string TagLine => string.Join(" · ", Library.Tags(Session));
     public BitmapImage? Thumbnail
     {
@@ -35,7 +36,7 @@ public sealed class TakeItem
                 b.BeginInit();
                 b.CacheOption = BitmapCacheOption.OnLoad; // don't lock the file
                 b.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-                b.DecodePixelWidth = 176;
+                b.DecodePixelWidth = 160;
                 b.UriSource = new Uri(p);
                 b.EndInit();
                 b.Freeze();
@@ -48,16 +49,30 @@ public sealed class TakeItem
 
 public partial class MainWindow : Window
 {
+    private const double CaptureMinW = 620, CaptureMinH = 340;
+    private const double EditorMinW = 900, EditorMinH = 600;
+
     private readonly AppSettings _settings;
     private readonly RecordingController _controller = new();
     private readonly ObservableCollection<TakeItem> _takes = [];
     private readonly DispatcherTimer _meterTimer;
+    private readonly DispatcherTimer _boundsSaveTimer;
     private EditorView? _editor;
-    private RecordingBar? _bar;
-    private RegionFrameWindow? _frame;
     private float _micLevel, _backLevel;
+    private int _recTick;
+    private bool _loaded;
     private bool _suppressSelection;
     private bool _devicesLoading;
+    private double _sidebarWidth = 276;
+    private string? _lastDeviceError;
+    private PixelRect? _savedCaptureBounds;
+    private bool _expandedForEditor;
+    private (int W, int H, PixelRect Hole) _lastHoleState;
+    private bool _holeUpdateQueued;
+
+    private bool IsEditorOpen => _editor != null;
+    private bool IsBusy => BusyOverlay.Visibility == Visibility.Visible;
+    private bool ShouldHaveHole => _loaded && !IsEditorOpen && !IsBusy && WindowState != WindowState.Minimized;
 
     public MainWindow() : this(null) { }
 
@@ -69,44 +84,184 @@ public partial class MainWindow : Window
         view.Source = _takes;
         view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(TakeItem.Group)));
         _meterTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(50), DispatcherPriority.Render, OnMeterTick, Dispatcher);
+        _boundsSaveTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background, OnSaveCaptureBounds, Dispatcher);
+
+        SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
         Closing += OnClosing;
         PreviewKeyDown += OnPreviewKeyDown;
+        SizeChanged += OnWindowGeometryChanged;
+        LocationChanged += OnWindowGeometryChanged;
+        StateChanged += OnWindowStateChanged;
+        DpiChanged += (_, _) => ScheduleHoleUpdate();
+        CaptureViewport.SizeChanged += (_, _) => ScheduleHoleUpdate();
+    }
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        Native.InstallWorkAreaMaximizeHook(this);
+        if (_settings.CaptureWindowBounds is { } saved)
+        {
+            var mons = ScreenCapturer.EnumerateMonitors().Select(m => m.Bounds).ToList();
+            Native.SetPhysicalBounds(this, RegionMath.ClampWindowToMonitors(saved, mons));
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        _loaded = true;
         if (!Ffmpeg.IsAvailable)
         {
             MessageBox.Show(this, "找不到 ffmpeg.exe。\n请把 ffmpeg.exe 放到程序所在目录，或安装 FFmpeg 并加入 PATH。", "缺少 FFmpeg",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        UpdateRegionText();
-        UpdateQualityText();
+        SetSidebar(_settings.SidebarOpen, save: false);
+        PinToggle.IsChecked = _settings.TopmostInCapture;
+        Topmost = _settings.TopmostInCapture;
+        UpdateMaximizeGlyph();
         LoadDevices();
         RefreshLibrary();
         _meterTimer.Start();
+        ScheduleHoleUpdate();
     }
 
-    private void UpdateQualityText()
+    // ---------------- Transparent Capture Hole ----------------
+
+    private void OnWindowGeometryChanged(object? sender, EventArgs e)
     {
-        QualityText.Text = $"视频：最高 {_settings.MaxHeight}p · {_settings.Fps} fps（看清歌词足够，体积小）\n音频：录制时无损，导出为 AAC / MP3 320 kbps";
-        RootHint.Text = _settings.Root;
-        RootHint.ToolTip = $"录音库：{_settings.RecordingsDir}\n导出：{_settings.ExportsDir}";
+        ScheduleHoleUpdate();
+        if (_loaded && !IsEditorOpen && !IsBusy && !_controller.IsRecording && WindowState == WindowState.Normal)
+        {
+            _boundsSaveTimer.Stop();
+            _boundsSaveTimer.Start();
+        }
+    }
+
+    private void OnWindowStateChanged(object? sender, EventArgs e)
+    {
+        UpdateMaximizeGlyph();
+        ScheduleHoleUpdate();
+    }
+
+    private void OnSaveCaptureBounds(object? sender, EventArgs e)
+    {
+        _boundsSaveTimer.Stop();
+        if (IsEditorOpen || IsBusy || _controller.IsRecording || WindowState != WindowState.Normal) return;
+        _settings.CaptureWindowBounds = Native.GetPhysicalBounds(this);
+        _settings.Save();
+    }
+
+    private void ScheduleHoleUpdate()
+    {
+        if (!_loaded || _holeUpdateQueued) return;
+        _holeUpdateQueued = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            _holeUpdateQueued = false;
+            UpdateCaptureHole();
+        });
+    }
+
+    private PixelRect ViewportPhysicalRect()
+    {
+        if (!CaptureViewport.IsVisible || CaptureViewport.ActualWidth < 2 || CaptureViewport.ActualHeight < 2) return default;
+        var tl = CaptureViewport.PointToScreen(new Point(0, 0));
+        var br = CaptureViewport.PointToScreen(new Point(CaptureViewport.ActualWidth, CaptureViewport.ActualHeight));
+        return new PixelRect((int)Math.Round(tl.X), (int)Math.Round(tl.Y),
+            (int)Math.Round(br.X - tl.X), (int)Math.Round(br.Y - tl.Y));
+    }
+
+    private void UpdateCaptureHole()
+    {
+        if (!_loaded) return;
+        if (!ShouldHaveHole)
+        {
+            if (_lastHoleState != default)
+            {
+                Native.SetWindowHole(this, null, 0, 0);
+                _lastHoleState = default;
+            }
+            return;
+        }
+        var win = Native.GetPhysicalBounds(this);
+        var vp = ViewportPhysicalRect();
+        var hole = RegionMath.WindowLocalHole(win, vp, minBorder: 3);
+        var state = (win.Width, win.Height, hole);
+        if (state != _lastHoleState)
+        {
+            Native.SetWindowHole(this, hole.IsEmpty ? null : hole, win.Width, win.Height);
+            _lastHoleState = state;
+        }
+        if (!vp.IsEmpty)
+        {
+            var (ow, oh) = RegionMath.OutputSize(vp.Width, vp.Height, _settings.MaxHeight);
+            StartButton.ToolTip = $"录制 {vp.Width}×{vp.Height}（输出 {ow}×{oh}）";
+        }
+    }
+
+    // ---------------- Window Chrome & Sidebar ----------------
+
+    private void OnTopBarMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        if (e.ClickCount == 2) { OnToggleMaximize(sender, e); return; }
+        try { DragMove(); } catch { }
+    }
+
+    private void OnMinimize(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void OnToggleMaximize(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void OnCloseWindow(object sender, RoutedEventArgs e) => Close();
+
+    private void UpdateMaximizeGlyph()
+    {
+        bool max = WindowState == WindowState.Maximized;
+        MaxGlyph.Data = Geometry.Parse(max
+            ? "M2,4.5 H9.5 V12 H2 Z M4.5,4.5 V2 H12 V9.5 H9.5"
+            : "M2.5,2.5 H11.5 V11.5 H2.5 Z");
+        MaxButton.ToolTip = max ? "还原" : "最大化";
+    }
+
+    private void OnTogglePin(object sender, RoutedEventArgs e)
+    {
+        bool pin = PinToggle.IsChecked == true;
+        _settings.TopmostInCapture = pin;
+        _settings.Save();
+        if (!IsEditorOpen && !_controller.IsRecording) Topmost = pin;
+    }
+
+    private void OnToggleSidebar(object sender, RoutedEventArgs e) =>
+        SetSidebar(SidebarToggle.IsChecked == true, save: true);
+
+    public void SetSidebar(bool open, bool save = true)
+    {
+        if (!open && SidebarCol.ActualWidth >= 200) _sidebarWidth = SidebarCol.ActualWidth;
+        SidebarToggle.IsChecked = open;
+        SidebarPanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        SidebarSplitter.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        SidebarCol.MinWidth = open ? 220 : 0;
+        SidebarCol.MaxWidth = open ? 360 : 0;
+        SidebarCol.Width = open ? new GridLength(_sidebarWidth) : new GridLength(0);
+        if (save)
+        {
+            _settings.SidebarOpen = open;
+            _settings.Save();
+        }
+        ScheduleHoleUpdate();
     }
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
         if (_controller.IsRecording) return;
-        // Media files must not be locked by the editor while folders may be moved.
         string? reopen = _editor?.Session.Id;
-        CloseEditor();
+        if (IsEditorOpen) CloseEditor(restoreCapture: false);
         var dlg = new SettingsWindow(_settings) { Owner = this };
         dlg.ShowDialog();
-        UpdateQualityText();
-        UpdateRegionText();
-        RefreshLibrary(select: dlg.LibraryChanged ? null : reopen);
-        if (_editor == null) ShowRecordPanel();
+        string? target = dlg.LibraryChanged ? null : reopen;
+        RefreshLibrary(select: target);
+        if (target == null || TakesList.SelectedItem == null) ShowCaptureMode();
     }
 
     // ---------------- Devices ----------------
@@ -138,7 +293,8 @@ public partial class MainWindow : Window
     private void OpenDevices()
     {
         if (_controller.IsRecording) return;
-        DeviceError.Visibility = Visibility.Collapsed;
+        _lastDeviceError = null;
+        DeviceErrorButton.Visibility = Visibility.Collapsed;
         if (MicBox.SelectedItem is not AudioDeviceItem mic || OutputBox.SelectedItem is not AudioDeviceItem output)
         {
             ShowDeviceError("没有找到可用的音频设备。");
@@ -151,7 +307,8 @@ public partial class MainWindow : Window
             _settings.OutputDeviceId = output.Id;
             _settings.Save();
             var f = _controller.MicFormat;
-            MicFormatText.Text = f == null ? "" : $"{f.SampleRate / 1000.0:0.#} kHz · {f.Channels} 声道";
+            MicBox.ToolTip = f == null ? mic.Name : $"{mic.Name}（{f.SampleRate / 1000.0:0.#} kHz · {f.Channels} 声道）";
+            OutputBox.ToolTip = output.Name;
         }
         catch (Exception ex)
         {
@@ -162,102 +319,129 @@ public partial class MainWindow : Window
 
     private void ShowDeviceError(string text)
     {
-        DeviceError.Text = text;
-        DeviceError.Visibility = Visibility.Visible;
+        _lastDeviceError = text;
+        DeviceErrorButton.ToolTip = text;
+        DeviceErrorButton.Visibility = Visibility.Visible;
+    }
+
+    private void OnDeviceErrorClick(object sender, RoutedEventArgs e)
+    {
+        if (_lastDeviceError != null) MessageBox.Show(this, _lastDeviceError, "音频设备错误", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void OnMeterTick(object? sender, EventArgs e)
     {
-        if (RecordPanel.Visibility != Visibility.Visible || _controller.IsRecording) return;
+        if (IsEditorOpen && !_controller.IsRecording) return;
         float mp = _controller.TakeMicPeak(), bp = _controller.TakeBackingPeak();
         _micLevel = mp > _micLevel ? mp : _micLevel * 0.85f;
         _backLevel = bp > _backLevel ? bp : _backLevel * 0.85f;
-        MicMeter.Value = Meter.ToDisplay(_micLevel);
-        BackMeter.Value = Meter.ToDisplay(_backLevel);
-    }
-
-    // ---------------- Region ----------------
-
-    private void UpdateRegionText()
-    {
-        RegionText.Text = _settings.Region is { } r
-            ? $"{r.Width} × {r.Height}（位置 {r.X}, {r.Y}）→ 输出 {RegionMath.OutputSize(r.Width, r.Height, _settings.MaxHeight).Width} × {RegionMath.OutputSize(r.Width, r.Height, _settings.MaxHeight).Height}"
-            : "未选择";
-    }
-
-    private async Task<PixelRect?> SelectRegionAsync()
-    {
-        var prevState = WindowState;
-        WindowState = WindowState.Minimized;
-        await Task.Delay(250);
-        var r = await RegionSelectorWindow.SelectAsync(_settings.Region);
-        WindowState = prevState == WindowState.Minimized ? WindowState.Normal : prevState;
-        Activate();
-        if (r is { } region)
+        MicMeter.Value = Library.PeakToMeter(_micLevel);
+        BackMeter.Value = Library.PeakToMeter(_backLevel);
+        if (_controller.IsRecording)
         {
-            _settings.Region = region;
-            _settings.Save();
-            UpdateRegionText();
+            ElapsedText.Text = Library.FormatDuration(_controller.Elapsed);
+            if (++_recTick % 10 == 0) RecDot.Opacity = RecDot.Opacity > 0.5 ? 0.3 : 1.0;
         }
-        return r;
     }
 
-    private async void OnSelectRegion(object sender, RoutedEventArgs e) => await SelectRegionAsync();
+    // ---------------- Recording (in-place viewfinder) ----------------
 
-    // ---------------- Recording ----------------
+    private void OnBackToCapture(object sender, RoutedEventArgs e) => ShowCaptureMode();
 
-    private void OnNewRecording(object sender, RoutedEventArgs e) => ShowRecordPanel();
-
-    private void ShowRecordPanel()
+    private void ShowCaptureMode()
     {
-        CloseEditor();
+        CloseEditor(restoreCapture: true);
         _suppressSelection = true;
         TakesList.SelectedItem = null;
         _suppressSelection = false;
-        RecordPanel.Visibility = Visibility.Visible;
+        EditorTopBar.Visibility = Visibility.Collapsed;
+        EditorHostBorder.Visibility = Visibility.Collapsed;
+        CaptureTopBar.Visibility = Visibility.Visible;
+        PinToggle.Visibility = Visibility.Visible;
+        ViewportFrame.Visibility = Visibility.Visible;
+        Topmost = _settings.TopmostInCapture;
         if (!_controller.DevicesOpen) OpenDevices();
+        ScheduleHoleUpdate();
     }
 
-    private async void OnStartRecording(object sender, RoutedEventArgs e)
+    private void OnStartRecording(object sender, RoutedEventArgs e)
     {
         if (!Ffmpeg.IsAvailable) { MessageBox.Show(this, "缺少 ffmpeg.exe，无法录制。"); return; }
         if (!_controller.DevicesOpen) OpenDevices();
         if (!_controller.DevicesOpen) return;
 
-        var region = _settings.Region;
-        if (region == null)
+        var vp = ViewportPhysicalRect();
+        var monitors = ScreenCapturer.EnumerateMonitors();
+        int mi = RegionMath.PickMonitor(vp, monitors.Select(m => m.Bounds).ToList());
+        var region = mi >= 0 ? RegionMath.ClampToMonitor(vp, monitors[mi].Bounds) : default;
+        if (region.IsEmpty)
         {
-            region = await SelectRegionAsync();
-            if (region == null) return;
+            MessageBox.Show(this, "取景框太小或超出屏幕范围，请把窗口拉大后再录制。", "无法录制", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
         }
 
-        StartButton.IsEnabled = false;
-        NewRecordingButton.IsEnabled = false;
-        WindowState = WindowState.Minimized;
-        await Task.Delay(350); // let the minimize animation finish before reading what's under the region
-        var r = region.Value;
-        string title = Native.TopLevelTitleAt(r.X + r.Width / 2, r.Y + r.Height / 2);
+        string title = Native.TopLevelTitleAt(region.X + region.Width / 2, region.Y + region.Height / 2, Native.Handle(this));
+        Native.SetExcludeFromCapture(this, true);
         try
         {
-            var s = _controller.Start(r, title, _settings.RecordingsDir, _settings.Fps, _settings.MaxHeight);
-            Log.Info($"recording {s.Id} region={r} title='{title}'");
+            var s = _controller.Start(region, title, _settings.RecordingsDir, _settings.Fps, _settings.MaxHeight);
+            Log.Info($"recording {s.Id} region={region} title='{title}'");
         }
         catch (Exception ex)
         {
+            Native.SetExcludeFromCapture(this, false);
             Log.Error("start", ex);
-            WindowState = WindowState.Normal;
-            StartButton.IsEnabled = true;
-            NewRecordingButton.IsEnabled = true;
             MessageBox.Show(this, "无法开始录制：" + ex.Message, "录制失败", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
-        _frame = new RegionFrameWindow(r);
-        _frame.Show();
-        _bar = new RecordingBar(_controller, r);
-        _bar.StopRequested += async () => await FinishRecordingAsync(discard: false);
-        _bar.DiscardRequested += async () => await FinishRecordingAsync(discard: true);
-        _bar.Show();
+        _recTick = 0;
+        ElapsedText.Text = "0:00";
+        RecDot.Opacity = 1.0;
+        Topmost = true; // stay above the browser while recording so Stop is always clickable
+        SetRecordingUi(true);
+    }
+
+    private async void OnStopRecording(object sender, RoutedEventArgs e)
+    {
+        StopButton.IsEnabled = false;
+        DiscardButton.IsEnabled = false;
+        StopButton.Content = "保存中…";
+        await FinishRecordingAsync(discard: false);
+    }
+
+    private async void OnDiscardRecording(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this, "放弃这次录制？", "放弃", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        StopButton.IsEnabled = false;
+        DiscardButton.IsEnabled = false;
+        await FinishRecordingAsync(discard: true);
+    }
+
+    internal void SetRecordingUi(bool recording)
+    {
+        StartButton.Visibility = recording ? Visibility.Collapsed : Visibility.Visible;
+        RecordingControls.Visibility = recording ? Visibility.Visible : Visibility.Collapsed;
+        StopButton.IsEnabled = true;
+        DiscardButton.IsEnabled = true;
+        StopButton.Content = "■ 停止";
+
+        // While recording, hide device dropdowns and enlarge live level meters.
+        MicBox.Visibility = recording ? Visibility.Collapsed : Visibility.Visible;
+        OutputBox.Visibility = recording ? Visibility.Collapsed : Visibility.Visible;
+        MicMeter.Height = recording ? 6 : 3;
+        BackMeter.Height = recording ? 6 : 3;
+        MicCol.MaxWidth = recording ? 110 : 250;
+        OutCol.MaxWidth = recording ? 110 : 250;
+
+        var frameBrush = (Brush)FindResource(recording ? "RecordBrush" : "FrameIdleBrush");
+        ViewportFrame.BorderBrush = frameBrush;
+        OuterFrame.BorderBrush = recording ? frameBrush : (Brush)FindResource("ControlStrokeColorDefaultBrush");
+
+        SidebarToggle.IsEnabled = !recording;
+        SettingsButton.IsEnabled = !recording;
+        PinToggle.IsEnabled = !recording;
+        TakesList.IsEnabled = !recording;
     }
 
     private async Task FinishRecordingAsync(bool discard)
@@ -274,27 +458,33 @@ public partial class MainWindow : Window
             error = ex;
             Log.Error("stop", ex);
         }
-        _bar?.Close(); _bar = null;
-        _frame?.Close(); _frame = null;
-        WindowState = WindowState.Normal;
-        Activate();
-        StartButton.IsEnabled = true;
-        NewRecordingButton.IsEnabled = true;
+        finally
+        {
+            Native.SetExcludeFromCapture(this, false);
+            SetRecordingUi(false);
+        }
 
         if (error != null)
         {
+            Topmost = _settings.TopmostInCapture;
             MessageBox.Show(this, "录制出错：" + error.Message, "录制失败", MessageBoxButton.OK, MessageBoxImage.Error);
             RefreshLibrary();
+            ScheduleHoleUpdate();
             return;
         }
-        if (s == null) return;
+        if (s == null)
+        {
+            Topmost = _settings.TopmostInCapture;
+            ScheduleHoleUpdate();
+            return;
+        }
 
-        SetBusy("正在保存音频…");
+        SetBusy("保存音频…");
         try
         {
             await SessionPostProcessor.CompressRawAsync(s);
             s.Save();
-            SetBusy("正在分析人声对齐…");
+            SetBusy("对齐分析…");
             var audio = await SessionAudio.LoadAsync(s);
             await Task.Run(() =>
             {
@@ -325,9 +515,10 @@ public partial class MainWindow : Window
     {
         BusyOverlay.Visibility = text == null ? Visibility.Collapsed : Visibility.Visible;
         if (text != null) BusyText.Text = text;
+        UpdateCaptureHole();
     }
 
-    // ---------------- Library ----------------
+    // ---------------- Library & Editor ----------------
 
     private SessionAudio? _preloaded;
 
@@ -335,7 +526,6 @@ public partial class MainWindow : Window
     {
         string? keep = select ?? (TakesList.SelectedItem as TakeItem)?.Session.Id;
         var sessions = Library.LoadAll(_settings.RecordingsDir);
-        // Reuse the live session object for the open editor so edits are not lost.
         if (_editor != null)
         {
             int i = sessions.FindIndex(x => x.Id == _editor.Session.Id);
@@ -368,43 +558,112 @@ public partial class MainWindow : Window
         }
     }
 
+    private void EnterEditorChrome()
+    {
+        if (!IsEditorOpen && ViewportFrame.Visibility == Visibility.Visible)
+        {
+            if (WindowState == WindowState.Normal)
+            {
+                var cur = Native.GetPhysicalBounds(this);
+                _savedCaptureBounds = cur;
+                var dpi = VisualTreeHelper.GetDpi(this);
+                int minW = (int)Math.Ceiling(980 * dpi.DpiScaleX), minH = (int)Math.Ceiling(680 * dpi.DpiScaleY);
+                var expanded = RegionMath.ExpandForEditor(cur, Native.GetMonitorWorkArea(this), minW, minH);
+                _expandedForEditor = expanded != cur;
+                if (_expandedForEditor) Native.SetPhysicalBounds(this, expanded);
+            }
+            MinWidth = EditorMinW;
+            MinHeight = EditorMinH;
+        }
+        Topmost = false;
+        CaptureTopBar.Visibility = Visibility.Collapsed;
+        PinToggle.Visibility = Visibility.Collapsed;
+        ViewportFrame.Visibility = Visibility.Collapsed;
+        EditorTopBar.Visibility = Visibility.Visible;
+        EditorHostBorder.Visibility = Visibility.Visible;
+        UpdateCaptureHole();
+    }
+
     private async void OnTakeSelected(object sender, SelectionChangedEventArgs e)
     {
         if (_suppressSelection || TakesList.SelectedItem is not TakeItem item) return;
+        if (_controller.IsRecording) return;
         if (_editor?.Session.Id == item.Session.Id && _preloaded == null) return;
         var s = item.Session;
         if (s.Incomplete)
         {
-            MessageBox.Show(this, "这次录音没有正常结束（可能程序被意外关闭），无法编辑。可以右键删除。", "录音不完整");
+            MessageBox.Show(this, "这次录音未正常结束，无法编辑，可右键删除。", "录音不完整");
             return;
         }
-        CloseEditor();
-        RecordPanel.Visibility = Visibility.Collapsed;
+        CloseEditor(restoreCapture: false);
+        EnterEditorChrome();
         var preloaded = _preloaded;
         _preloaded = null;
-        SetBusy("正在加载…");
+        if (preloaded == null) SetBusy("加载中…");
         try
         {
             var audio = preloaded ?? await SessionAudio.LoadAsync(s);
-            if (TakesList.SelectedItem != item) return; // user moved on
+            if (TakesList.SelectedItem != item) return;
             _editor = new EditorView(s, audio, _settings, item.TakeNumber);
             _editor.SessionChanged += OnEditorSessionChanged;
             EditorHost.Content = _editor;
-            EditorHost.Visibility = Visibility.Visible;
+            SyncEditorHeader(s, item.TakeNumber);
             _editor.Focus();
         }
         catch (Exception ex)
         {
             Log.Error("open take", ex);
             MessageBox.Show(this, "无法打开录音：" + ex.Message, "出错了", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowCaptureMode();
         }
-        finally { SetBusy(null); }
+        finally { if (preloaded == null) SetBusy(null); }
+    }
+
+    private void SyncEditorHeader(SessionInfo s, int takeNumber)
+    {
+        EditorTitleBox.Text = s.SongTitle;
+        EditorTakeMeta.Text = $"Take {takeNumber} · {s.CreatedAt:MM/dd HH:mm}";
+        EditorStarButton.IsChecked = s.Starred;
+        EditorStarButton.Content = s.Starred ? "★" : "☆";
+        EditorStarButton.Foreground = s.Starred
+            ? new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07))
+            : (Brush)FindResource("TextFillColorPrimaryBrush");
+    }
+
+    private void OnEditorTitleKey(object sender, KeyEventArgs e)
+    {
+        if (_editor == null) return;
+        if (e.Key == Key.Enter) { CommitEditorTitle(); _editor.Focus(); e.Handled = true; }
+        else if (e.Key == Key.Escape) { EditorTitleBox.Text = _editor.Session.SongTitle; _editor.Focus(); e.Handled = true; }
+    }
+
+    private void OnEditorTitleCommitted(object sender, RoutedEventArgs e) => CommitEditorTitle();
+
+    private void CommitEditorTitle()
+    {
+        if (_editor == null) return;
+        var s = _editor.Session;
+        var t = EditorTitleBox.Text.Trim();
+        if (t.Length == 0 || t == s.SongTitle) { EditorTitleBox.Text = s.SongTitle; return; }
+        s.SongTitle = t;
+        s.Save();
+        RefreshLibrary();
+    }
+
+    private void OnEditorStar(object sender, RoutedEventArgs e)
+    {
+        if (_editor == null) return;
+        var s = _editor.Session;
+        s.Starred = !s.Starred;
+        s.Save();
+        var cur = TakesList.SelectedItem as TakeItem;
+        SyncEditorHeader(s, cur?.TakeNumber ?? 1);
+        OnEditorSessionChanged(s, false);
     }
 
     private void OnEditorSessionChanged(SessionInfo s, bool regroup)
     {
         if (regroup) { RefreshLibrary(); return; }
-        // Cheap refresh of the tag line for this item.
         var item = _takes.FirstOrDefault(t => t.Session.Id == s.Id);
         if (item == null) return;
         int idx = _takes.IndexOf(item);
@@ -415,14 +674,23 @@ public partial class MainWindow : Window
         _suppressSelection = false;
     }
 
-    private void CloseEditor()
+    private void CloseEditor(bool restoreCapture)
     {
-        if (_editor == null) return;
-        _editor.SessionChanged -= OnEditorSessionChanged;
-        _editor.Shutdown();
-        EditorHost.Content = null;
-        EditorHost.Visibility = Visibility.Collapsed;
-        _editor = null;
+        if (_editor != null)
+        {
+            _editor.SessionChanged -= OnEditorSessionChanged;
+            _editor.Shutdown();
+            EditorHost.Content = null;
+            _editor = null;
+        }
+        if (restoreCapture)
+        {
+            MinWidth = CaptureMinW;
+            MinHeight = CaptureMinH;
+            if (_expandedForEditor && _savedCaptureBounds is { } cb && WindowState == WindowState.Normal)
+                Native.SetPhysicalBounds(this, cb);
+            _expandedForEditor = false;
+        }
     }
 
     private TakeItem? ContextItem => TakesList.SelectedItem as TakeItem;
@@ -438,8 +706,8 @@ public partial class MainWindow : Window
             s.SongTitle = dlg.Value.Trim();
             s.Save();
         }
-        CloseEditor();
-        RefreshLibrary(select: item.Session.Id);
+        RefreshLibrary();
+        if (_editor != null && TakesList.SelectedItem is TakeItem cur) SyncEditorHeader(_editor.Session, cur.TakeNumber);
     }
 
     private void OnToggleStar(object sender, RoutedEventArgs e)
@@ -448,8 +716,8 @@ public partial class MainWindow : Window
         item.Session.Starred = !item.Session.Starred;
         item.Session.Save();
         bool wasOpen = _editor?.Session.Id == item.Session.Id;
-        if (wasOpen) CloseEditor();
-        RefreshLibrary(select: wasOpen ? item.Session.Id : null);
+        if (wasOpen) SyncEditorHeader(item.Session, item.TakeNumber);
+        OnEditorSessionChanged(item.Session, false);
     }
 
     private void OnOpenFolder(object sender, RoutedEventArgs e)
@@ -461,9 +729,10 @@ public partial class MainWindow : Window
     private void OnDelete(object sender, RoutedEventArgs e)
     {
         if (ContextItem is not { } item) return;
-        if (MessageBox.Show(this, $"删除「{item.Session.SongTitle}」的 Take {item.TakeNumber}？\n（移到回收站，已导出的文件不受影响）",
+        if (MessageBox.Show(this, $"删除「{item.Session.SongTitle}」Take {item.TakeNumber}？（移到回收站）",
                 "删除", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-        if (_editor?.Session.Id == item.Session.Id) CloseEditor();
+        bool wasOpen = _editor?.Session.Id == item.Session.Id;
+        if (wasOpen) CloseEditor(restoreCapture: false);
         try
         {
             var s = item.Session;
@@ -473,7 +742,6 @@ public partial class MainWindow : Window
             var ui = Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs;
             if (otherTakes)
             {
-                // Other takes split from the same recording still use the media: remove only this take.
                 Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(s.PathOf(s.JsonFile), ui, recycle);
                 if (File.Exists(s.PathOf(s.ThumbFile))) Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(s.PathOf(s.ThumbFile), ui, recycle);
             }
@@ -485,14 +753,14 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "删除失败：" + ex.Message);
         }
         RefreshLibrary();
-        if (_editor == null) ShowRecordPanel();
+        if (wasOpen) ShowCaptureMode();
     }
 
     // ---------------- Keyboard / lifecycle ----------------
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (_editor == null || EditorHost.Visibility != Visibility.Visible) return;
+        if (_editor == null || EditorHostBorder.Visibility != Visibility.Visible) return;
         if (Keyboard.FocusedElement is TextBox || Keyboard.FocusedElement is ComboBox || Keyboard.FocusedElement is ComboBoxItem) return;
         if (_editor.HandleKey(e)) e.Handled = true;
     }
@@ -506,11 +774,14 @@ public partial class MainWindow : Window
                 e.Cancel = true;
                 return;
             }
+            Native.SetExcludeFromCapture(this, false);
             _controller.DiscardAsync().GetAwaiter().GetResult();
         }
-        _bar?.Close();
-        _frame?.Close();
-        CloseEditor();
+        if (!IsEditorOpen && WindowState == WindowState.Normal)
+            _settings.CaptureWindowBounds = Native.GetPhysicalBounds(this);
+        else if (_savedCaptureBounds is { } cb)
+            _settings.CaptureWindowBounds = cb;
+        CloseEditor(restoreCapture: false);
         _controller.Dispose();
         _settings.Save();
     }

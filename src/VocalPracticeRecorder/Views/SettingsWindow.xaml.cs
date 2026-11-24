@@ -18,7 +18,7 @@ public partial class SettingsWindow : Window
 
     private static readonly int[] Heights = [480, 540, 720, 1080];
     private static readonly int[] FpsValues = [15, 20, 24, 30];
-    private static readonly (int Crf, string Label)[] Crfs = [(30, "体积优先（CRF 30）"), (28, "平衡（CRF 28，默认）"), (24, "清晰（CRF 24）")];
+    private static readonly (int Crf, string Label)[] Crfs = [(30, "体积优先 (CRF 30)"), (28, "平衡 (CRF 28)"), (24, "清晰 (CRF 24)")];
 
     public SettingsWindow(AppSettings settings)
     {
@@ -48,10 +48,10 @@ public partial class SettingsWindow : Window
         try
         {
             var root = Path.GetPathRoot(Path.GetFullPath(_settings.Root));
-            if (root != null) free = $" · 所在磁盘剩余 {FormatSize(new DriveInfo(root).AvailableFreeSpace)}";
+            if (root != null) free = $" · 剩余 {FormatSize(new DriveInfo(root).AvailableFreeSpace)}";
         }
         catch { }
-        RootInfo.Text = $"录音放在「{_settings.RecordingsDir}」：{count} 遍，占用 {FormatSize(bytes)}{free}";
+        RootInfo.Text = $"{count} 遍 · {FormatSize(bytes)}{free}";
     }
 
     private static string FormatSize(long b) =>

@@ -1,128 +1,247 @@
 ﻿<Window x:Class="VocalPracticeRecorder.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="练唱录制" Height="820" Width="1280" MinWidth="980" MinHeight="640"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="练唱录制" Height="680" Width="1060" MinWidth="620" MinHeight="340"
         Icon="pack://application:,,,/app.ico"
+        WindowStyle="None" ResizeMode="CanResize"
+        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
         WindowStartupLocation="CenterScreen">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="5" GlassFrameThickness="0"
+                            CornerRadius="0" UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
     <Window.Resources>
         <CollectionViewSource x:Key="TakesView" />
     </Window.Resources>
-    <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="320" MinWidth="240" />
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
 
-        <!-- Library -->
-        <DockPanel Grid.Column="0">
-            <Button x:Name="NewRecordingButton" DockPanel.Dock="Top" Content="● 新录音" Margin="12,12,12,8"
-                    HorizontalAlignment="Stretch" Style="{StaticResource RecordButton}" Click="OnNewRecording" />
-            <TextBlock DockPanel.Dock="Top" Text="录音库（按曲目分组）" Style="{StaticResource SectionTitle}" Margin="14,4,0,4" />
-            <TextBlock x:Name="EmptyHint" DockPanel.Dock="Top" Margin="14,8" TextWrapping="Wrap"
-                       Foreground="{StaticResource SubtleTextBrush}"
-                       Text="还没有录音。点「新录音」，框选 B 站视频区域就可以开始。" />
-            <DockPanel DockPanel.Dock="Bottom" Margin="12,4,12,10">
-                <Button Content="⚙ 设置" Click="OnSettings" ToolTip="录音库 / 导出位置、录制画质" />
-                <TextBlock x:Name="RootHint" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="11"
-                           Foreground="{StaticResource SubtleTextBrush}" TextTrimming="CharacterEllipsis" />
-            </DockPanel>
-            <ListBox x:Name="TakesList" ItemsSource="{Binding Source={StaticResource TakesView}}" BorderThickness="0"
-                     Background="Transparent" SelectionChanged="OnTakeSelected" Margin="4,0,4,8"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizingWhenGrouping="True">
-                <ListBox.GroupStyle>
-                    <GroupStyle>
-                        <GroupStyle.HeaderTemplate>
-                            <DataTemplate>
-                                <DockPanel Margin="8,12,8,4">
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount, StringFormat={}{0} 遍}"
-                                               Foreground="{StaticResource SubtleTextBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" />
-                                </DockPanel>
-                            </DataTemplate>
-                        </GroupStyle.HeaderTemplate>
-                    </GroupStyle>
-                </ListBox.GroupStyle>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Grid Margin="0,2">
+    <!-- Outer 1px outline keeps the borderless window crisp over both light and dark pages. -->
+    <Border x:Name="OuterFrame" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1">
+        <Grid x:Name="RootGrid">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="48" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Unified Top Bar (draggable on any empty area) -->
+            <Border Grid.Row="0" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0,1"
+                    MouseLeftButtonDown="OnTopBarMouseDown">
+                <Grid Margin="6,5,4,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left: Sidebar toggle -->
+                    <ToggleButton x:Name="SidebarToggle" Grid.Column="0" Style="{StaticResource TopToggleButton}"
+                                  ToolTip="录音库" Click="OnToggleSidebar" Margin="0,0,6,0">
+                        <Path Data="M2,4 H16 M2,9 H16 M2,14 H16" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                              StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="18" Height="18" />
+                    </ToggleButton>
+
+                    <!-- Middle A: Capture controls (devices + meters + record / stop) -->
+                    <Grid x:Name="CaptureTopBar" Grid.Column="1" VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="MicCol" Width="*" MaxWidth="250" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition x:Name="OutCol" Width="*" MaxWidth="250" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Mic -->
+                        <Grid Grid.Column="0" VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="96" />
+                                <ColumnDefinition Width="18" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Border Width="88" Height="50" CornerRadius="4" Background="#20000000" ClipToBounds="True" HorizontalAlignment="Left">
-                                <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
-                            </Border>
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock>
-                                    <Run Text="{Binding Header, Mode=OneWay}" FontWeight="SemiBold" />
-                                    <Run Text="{Binding StarMark, Mode=OneWay}" Foreground="#FFC107" />
-                                </TextBlock>
-                                <TextBlock Text="{Binding TagLine}" FontSize="11" Foreground="{StaticResource SubtleTextBrush}"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
+                            <Path Data="M7,2 A2.5,2.5 0 0 1 9.5,4.5 V8 A2.5,2.5 0 0 1 4.5,8 V4.5 A2.5,2.5 0 0 1 7,2 Z M3,8 A4,4 0 0 0 11,8 M7,12 V14.5 M4.8,14.5 H9.2"
+                                  Stroke="{StaticResource VocalBrush}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Width="14" Height="16" VerticalAlignment="Center" HorizontalAlignment="Left" ToolTip="麦克风" />
+                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <ComboBox x:Name="MicBox" Height="28" Padding="8,0,24,0" VerticalContentAlignment="Center" FontSize="12"
+                                          SelectionChanged="OnDeviceChanged" ToolTip="麦克风" />
+                                <ProgressBar x:Name="MicMeter" Grid.Row="1" Height="3" Margin="2,2,2,0" Minimum="0" Maximum="1"
+                                             Foreground="{StaticResource VocalBrush}" Background="#25FFFFFF" BorderThickness="0" />
+                            </Grid>
                         </Grid>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-                <ListBox.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem Header="重命名曲名…" Click="OnRename" />
-                        <MenuItem Header="标为最佳 / 取消" Click="OnToggleStar" />
-                        <MenuItem Header="打开所在文件夹" Click="OnOpenFolder" />
-                        <Separator />
-                        <MenuItem Header="删除这一遍（移到回收站）" Click="OnDelete" />
-                    </ContextMenu>
-                </ListBox.ContextMenu>
-            </ListBox>
-        </DockPanel>
 
-        <GridSplitter Grid.Column="1" Width="1" HorizontalAlignment="Stretch" Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+                        <!-- Backing (output loopback) -->
+                        <Grid Grid.Column="2" VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Path Data="M2,6 H5 L9,2.5 V13.5 L5,10 H2 Z M11.2,5.3 A3.5,3.5 0 0 1 11.2,10.7 M13,3.5 A6,6 0 0 1 13,12.5"
+                                  Stroke="{StaticResource BackingBrush}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Width="15" Height="16" VerticalAlignment="Center" HorizontalAlignment="Left" ToolTip="伴奏输出" />
+                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <ComboBox x:Name="OutputBox" Height="28" Padding="8,0,24,0" VerticalContentAlignment="Center" FontSize="12"
+                                          SelectionChanged="OnDeviceChanged" ToolTip="伴奏输出" />
+                                <ProgressBar x:Name="BackMeter" Grid.Row="1" Height="3" Margin="2,2,2,0" Minimum="0" Maximum="1"
+                                             Foreground="{StaticResource BackingBrush}" Background="#25FFFFFF" BorderThickness="0" />
+                            </Grid>
+                        </Grid>
 
-        <!-- Record panel -->
-        <ScrollViewer x:Name="RecordPanel" Grid.Column="2" VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="32,24" MaxWidth="640" HorizontalAlignment="Left">
-                <TextBlock Text="新录音" FontSize="24" FontWeight="SemiBold" />
-                <TextBlock Text="框选视频区域 → 开始录制 → 到 B 站点播放跟唱 → 点控制条上的「停止」" Margin="0,6,0,8"
-                           Foreground="{StaticResource SubtleTextBrush}" TextWrapping="Wrap" />
+                        <!-- Idle record button / active recording controls -->
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="StartButton" Content="● 录制" Style="{StaticResource RecordPillButton}" Click="OnStartRecording" />
 
-                <TextBlock Text="麦克风（输入设备）" Style="{StaticResource SectionTitle}" />
-                <ComboBox x:Name="MicBox" SelectionChanged="OnDeviceChanged" />
-                <DockPanel Margin="0,6,0,0">
-                    <TextBlock x:Name="MicFormatText" DockPanel.Dock="Right" Foreground="{StaticResource SubtleTextBrush}" FontSize="11" Margin="8,0,0,0" />
-                    <ProgressBar x:Name="MicMeter" Height="6" Minimum="0" Maximum="1" Foreground="{StaticResource VocalBrush}" />
-                </DockPanel>
+                            <StackPanel x:Name="RecordingControls" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+                                <Ellipse x:Name="RecDot" Width="9" Height="9" Fill="{StaticResource RecordBrush}" VerticalAlignment="Center" Margin="2,0,6,0" />
+                                <TextBlock x:Name="ElapsedText" Text="0:00" FontFamily="Consolas" FontSize="14" VerticalAlignment="Center" MinWidth="46" Margin="0,0,8,0" />
+                                <Button x:Name="StopButton" Content="■ 停止" Style="{StaticResource RecordPillButton}" Padding="12,0" Click="OnStopRecording" />
+                                <Button x:Name="DiscardButton" Style="{StaticResource TopIconButton}" Margin="4,0,0,0" ToolTip="放弃本次录制" Click="OnDiscardRecording">
+                                    <Path Data="M4,4 L12,12 M12,4 L4,12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="1.5" StrokeStartLineCap="Round" Width="16" Height="16" />
+                                </Button>
+                            </StackPanel>
 
-                <TextBlock Text="伴奏来源（录制这个输出设备播放的声音）" Style="{StaticResource SectionTitle}" />
-                <ComboBox x:Name="OutputBox" SelectionChanged="OnDeviceChanged" />
-                <ProgressBar x:Name="BackMeter" Height="6" Minimum="0" Maximum="1" Margin="0,6,0,0" Foreground="{StaticResource BackingBrush}" />
-                <TextBlock x:Name="DeviceError" Foreground="{StaticResource RecordBrush}" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed" />
+                            <Button x:Name="DeviceErrorButton" Style="{StaticResource TopIconButton}" Margin="4,0,0,0"
+                                    Visibility="Collapsed" Foreground="{StaticResource RecordBrush}" Content="⚠" FontSize="14"
+                                    Click="OnDeviceErrorClick" />
+                        </StackPanel>
+                    </Grid>
 
-                <TextBlock Text="录制区域" Style="{StaticResource SectionTitle}" />
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="框选区域" Click="OnSelectRegion" Margin="8,0,0,0" />
-                    <TextBlock x:Name="RegionText" VerticalAlignment="Center" Text="未选择" />
-                </DockPanel>
-                <TextBlock x:Name="QualityText" Margin="0,6,0,0" Foreground="{StaticResource SubtleTextBrush}" FontSize="12" TextWrapping="Wrap" />
+                    <!-- Middle B: Editor top controls (back + title + take meta + star) -->
+                    <DockPanel x:Name="EditorTopBar" Grid.Column="1" VerticalAlignment="Center" Visibility="Collapsed" Margin="0,0,8,0">
+                        <Button x:Name="BackToCaptureButton" DockPanel.Dock="Left" Content="← 录制" Height="30" Padding="10,0"
+                                Margin="0,0,10,0" Click="OnBackToCapture" ToolTip="返回录制取景框" />
+                        <ToggleButton x:Name="EditorStarButton" DockPanel.Dock="Right" Style="{StaticResource TopToggleButton}"
+                                      Content="☆" FontSize="15" ToolTip="标为最佳" Click="OnEditorStar" Margin="6,0,0,0" />
+                        <TextBlock x:Name="EditorTakeMeta" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="10,0,0,0"
+                                   FontSize="12" Foreground="{StaticResource SubtleTextBrush}" />
+                        <TextBox x:Name="EditorTitleBox" FontSize="14" FontWeight="SemiBold" BorderThickness="0" Background="Transparent"
+                                 VerticalContentAlignment="Center" Height="30" Padding="4,0"
+                                 ToolTip="点击修改曲名" LostFocus="OnEditorTitleCommitted" KeyDown="OnEditorTitleKey" />
+                    </DockPanel>
 
-                <Button x:Name="StartButton" Content="● 开始录制" Style="{StaticResource RecordButton}" HorizontalAlignment="Left"
-                        Margin="0,28,0,0" Click="OnStartRecording" />
-                <TextBlock Margin="0,14,0,0" TextWrapping="Wrap" Foreground="{StaticResource SubtleTextBrush}" FontSize="12"
-                           Text="提示：开始录制后本窗口会最小化，控制条不会被录进视频。外放唱歌时程序会根据麦克风里的伴奏自动对齐人声；戴耳机时请在编辑器里用 ← → 微调一次，之后会自动记住。" />
-            </StackPanel>
-        </ScrollViewer>
-
-        <!-- Editor host -->
-        <ContentControl x:Name="EditorHost" Grid.Column="2" Visibility="Collapsed" Focusable="False" />
-
-        <!-- Busy overlay -->
-        <Grid x:Name="BusyOverlay" Grid.Column="2" Visibility="Collapsed" Background="#80000000">
-            <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" CornerRadius="8" Padding="28,20"
-                    HorizontalAlignment="Center" VerticalAlignment="Center" MinWidth="280">
-                <StackPanel>
-                    <TextBlock x:Name="BusyText" Text="处理中…" FontSize="15" Margin="0,0,0,12" />
-                    <ProgressBar IsIndeterminate="True" Height="4" />
-                </StackPanel>
+                    <!-- Right: Pin + Settings + Window caption buttons -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <ToggleButton x:Name="PinToggle" Style="{StaticResource TopToggleButton}" ToolTip="置顶" Click="OnTogglePin" Margin="2,0">
+                            <Path Data="M6,2.5 H12 L11.2,7 L13.5,9.5 H4.5 L6.8,7 Z M9,9.5 V15"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                                  StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Width="18" Height="18" />
+                        </ToggleButton>
+                        <Button x:Name="SettingsButton" Style="{StaticResource TopIconButton}" ToolTip="设置" Click="OnSettings" Margin="2,0">
+                            <Path Data="M7.6,2 H10.4 L10.8,3.9 C11.3,4.1 11.8,4.3 12.2,4.7 L14,4 L15.4,6.4 L13.9,7.7 C14,8.1 14,8.5 14,9 C14,9.5 14,9.9 13.9,10.3 L15.4,11.6 L14,14 L12.2,13.3 C11.8,13.7 11.3,13.9 10.8,14.1 L10.4,16 H7.6 L7.2,14.1 C6.7,13.9 6.2,13.7 5.8,13.3 L4,14 L2.6,11.6 L4.1,10.3 C4,9.9 4,9.5 4,9 C4,8.5 4,8.1 4.1,7.7 L2.6,6.4 L4,4 L5.8,4.7 C6.2,4.3 6.7,4.1 7.2,3.9 Z M9,6.6 A2.4,2.4 0 1 0 9,11.4 A2.4,2.4 0 1 0 9,6.6 Z"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.25" StrokeLineJoin="Round" Width="18" Height="18" />
+                        </Button>
+                        <Rectangle Width="1" Height="16" Fill="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="6,0" />
+                        <Button Style="{StaticResource CaptionButton}" Click="OnMinimize" ToolTip="最小化">
+                            <Path Data="M2,8 H12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Width="14" Height="14" />
+                        </Button>
+                        <Button x:Name="MaxButton" Style="{StaticResource CaptionButton}" Click="OnToggleMaximize" ToolTip="最大化">
+                            <Path x:Name="MaxGlyph" Data="M2.5,2.5 H11.5 V11.5 H2.5 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Width="14" Height="14" />
+                        </Button>
+                        <Button Style="{StaticResource CloseCaptionButton}" Click="OnCloseWindow" ToolTip="关闭">
+                            <Path Data="M3,3 L11,11 M11,3 L3,11" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.25" Width="14" Height="14" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
             </Border>
+
+            <!-- Body: Collapsible Sidebar + (Capture Viewport OR Editor) -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="SidebarCol" Width="0" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Collapsible Sidebar -->
+                <Border x:Name="SidebarPanel" Grid.Column="0" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" Visibility="Collapsed">
+                    <Grid>
+                        <TextBlock x:Name="EmptyHint" Text="暂无录音" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{StaticResource SubtleTextBrush}" Visibility="Collapsed" />
+                        <ListBox x:Name="TakesList" ItemsSource="{Binding Source={StaticResource TakesView}}" BorderThickness="0"
+                                 Background="Transparent" SelectionChanged="OnTakeSelected" Margin="4,4,4,6"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizingWhenGrouping="True">
+                            <ListBox.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <DockPanel Margin="8,10,8,3">
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount}" FontSize="11"
+                                                           Foreground="{StaticResource SubtleTextBrush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ListBox.GroupStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="82" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="76" Height="44" CornerRadius="4" Background="#20000000" ClipToBounds="True" HorizontalAlignment="Left">
+                                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock FontSize="12.5" TextTrimming="CharacterEllipsis">
+                                                <Run Text="{Binding Header, Mode=OneWay}" FontWeight="SemiBold" />
+                                                <Run Text="{Binding StarMark, Mode=OneWay}" Foreground="#FFC107" />
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding TagLine}" FontSize="11" Foreground="{StaticResource SubtleTextBrush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="重命名…" Click="OnRename" />
+                                    <MenuItem Header="标为最佳" Click="OnToggleStar" />
+                                    <MenuItem Header="打开所在文件夹" Click="OnOpenFolder" />
+                                    <Separator />
+                                    <MenuItem Header="删除" Click="OnDelete" />
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
+                    </Grid>
+                </Border>
+
+                <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Width="1" HorizontalAlignment="Stretch"
+                              Background="{DynamicResource ControlStrokeColorDefaultBrush}" Visibility="Collapsed" />
+
+                <!-- Right area A: Capture Viewport (constant 5px frame around the transparent click-through hole) -->
+                <Border x:Name="ViewportFrame" Grid.Column="2" BorderBrush="{StaticResource FrameIdleBrush}" BorderThickness="5,3,5,5"
+                        Background="Transparent">
+                    <Grid x:Name="CaptureViewport" Background="Transparent" />
+                </Border>
+
+                <!-- Right area B: Editor -->
+                <Border x:Name="EditorHostBorder" Grid.Column="2" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" Visibility="Collapsed">
+                    <ContentControl x:Name="EditorHost" Focusable="False" />
+                </Border>
+
+                <!-- Busy overlay -->
+                <Grid x:Name="BusyOverlay" Grid.Column="2" Visibility="Collapsed" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+                    <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="24,18" HorizontalAlignment="Center" VerticalAlignment="Center" MinWidth="240">
+                        <StackPanel>
+                            <TextBlock x:Name="BusyText" Text="处理中…" FontSize="14" Margin="0,0,0,10" />
+                            <ProgressBar IsIndeterminate="True" Height="4" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Grid>
         </Grid>
-    </Grid>
+    </Border>
 </Window>
