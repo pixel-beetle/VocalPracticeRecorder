@@ -18,6 +18,8 @@ public sealed class AppSettings
     public int? WindowW { get; set; }
     public int? WindowH { get; set; }
     public bool SidebarOpen { get; set; }
+    public bool PitchPanelOpen { get; set; }
+    public double PitchPanelHeight { get; set; } = 156;
     public bool TopmostInCapture { get; set; } = true;
     public int Fps { get; set; } = 20;
     public int MaxHeight { get; set; } = 720;

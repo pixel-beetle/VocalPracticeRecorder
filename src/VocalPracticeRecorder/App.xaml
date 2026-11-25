@@ -15,6 +15,42 @@
             <SolidColorBrush x:Key="BackingBrush" Color="#9B7BF0" />
             <SolidColorBrush x:Key="SubtleTextBrush" Color="#8A8F98" />
             <SolidColorBrush x:Key="FrameIdleBrush" Color="#4C505A" />
+            <SolidColorBrush x:Key="PitchInTuneBrush" Color="#3ECF8E" />
+            <SolidColorBrush x:Key="PitchNearBrush" Color="#F5B73B" />
+            <SolidColorBrush x:Key="PitchOffBrush" Color="#F06469" />
+
+            <Style x:Key="PitchPillToggle" TargetType="ToggleButton">
+                <Setter Property="Background" Value="#14FFFFFF" />
+                <Setter Property="BorderBrush" Value="#24FFFFFF" />
+                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="MinWidth" Value="94" />
+                <Setter Property="Focusable" Value="False" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border x:Name="Bg" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="1" CornerRadius="5">
+                                <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bg" Property="Background" Value="#22FFFFFF" />
+                                    <Setter TargetName="Bg" Property="BorderBrush" Value="#3CFFFFFF" />
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Bg" Property="Background" Value="#243BA8F5" />
+                                    <Setter TargetName="Bg" Property="BorderBrush" Value="#703BA8F5" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bg" Property="Background" Value="#343BA8F5" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
 
             <Style x:Key="RecordPillButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                 <Setter Property="Background" Value="{StaticResource RecordBrush}" />

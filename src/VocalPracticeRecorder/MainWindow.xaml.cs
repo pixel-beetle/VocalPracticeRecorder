@@ -49,8 +49,9 @@ public sealed class TakeItem
 
 public partial class MainWindow : Window
 {
-    private const double CaptureMinW = 620, CaptureMinH = 340;
+    private const double CaptureMinW = 660, CaptureMinH = 340;
     private const double EditorMinW = 900, EditorMinH = 600;
+    private const double PitchMinH = 110, PitchMaxH = 300;
 
     private readonly AppSettings _settings;
     private readonly RecordingController _controller = new();
@@ -64,10 +65,13 @@ public partial class MainWindow : Window
     private bool _suppressSelection;
     private bool _devicesLoading;
     private double _sidebarWidth = 276;
+    private double _pitchPanelHeight = 156;
+    private bool _pitchPanelOpen;
     private string? _lastDeviceError;
     private PixelRect? _savedCaptureBounds;
     private bool _expandedForEditor;
 
+    internal RecordingController Controller => _controller;
     private bool IsEditorOpen => _editor != null;
     private bool IsBusy => BusyOverlay.Visibility == Visibility.Visible;
 
@@ -80,7 +84,7 @@ public partial class MainWindow : Window
         var view = (CollectionViewSource)Resources["TakesView"];
         view.Source = _takes;
         view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(TakeItem.Group)));
-        _meterTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(50), DispatcherPriority.Render, OnMeterTick, Dispatcher);
+        _meterTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Render, OnMeterTick, Dispatcher);
         _boundsSaveTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background, OnSaveCaptureBounds, Dispatcher);
 
         SourceInitialized += OnSourceInitialized;
@@ -114,6 +118,8 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         SetSidebar(_settings.SidebarOpen, save: false);
+        _pitchPanelHeight = Math.Clamp(_settings.PitchPanelHeight, PitchMinH, PitchMaxH);
+        SetPitchPanel(_settings.PitchPanelOpen, save: false);
         PinToggle.IsChecked = _settings.TopmostInCapture;
         Topmost = _settings.TopmostInCapture;
         UpdateMaximizeGlyph();
@@ -127,6 +133,7 @@ public partial class MainWindow : Window
 
     private void OnWindowGeometryChanged(object? sender, EventArgs e)
     {
+        UpdatePitchMaxHeight();
         UpdateCaptureTooltip();
         if (_loaded && !IsEditorOpen && !IsBusy && !_controller.IsRecording && WindowState == WindowState.Normal)
         {
@@ -219,6 +226,63 @@ public partial class MainWindow : Window
             _settings.SidebarOpen = open;
             _settings.Save();
         }
+        UpdateCaptureTooltip();
+    }
+
+    private void OnTogglePitch(object sender, RoutedEventArgs e)
+    {
+        if (_controller.IsRecording)
+        {
+            // Keep capture hole geometry fixed while recording; live pitch readout stays bright and active.
+            PitchToggle.IsChecked = _pitchPanelOpen;
+            return;
+        }
+        SetPitchPanel(PitchToggle.IsChecked == true, save: true);
+    }
+
+    public void SetPitchPanel(bool open, bool save = true)
+    {
+        if (!open && PitchRow.ActualHeight >= PitchMinH)
+            _pitchPanelHeight = Math.Clamp(PitchRow.ActualHeight, PitchMinH, PitchMaxH);
+
+        _pitchPanelOpen = open;
+        PitchToggle.IsChecked = open;
+        PitchChevron.Data = Geometry.Parse(open ? "M1,4.5 L4,1.5 L7,4.5" : "M1,1.5 L4,4.5 L7,1.5");
+        PitchPanelBorder.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        PitchSplitter.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        ViewportFrame.BorderThickness = open ? new Thickness(6, 3, 6, 3) : new Thickness(6, 3, 6, 6);
+
+        UpdatePitchMaxHeight();
+        PitchRow.MinHeight = open ? PitchMinH : 0;
+        PitchRow.Height = open ? new GridLength(Math.Min(_pitchPanelHeight, PitchRow.MaxHeight)) : new GridLength(0);
+
+        if (save)
+        {
+            _settings.PitchPanelOpen = open;
+            _settings.PitchPanelHeight = Math.Round(_pitchPanelHeight);
+            _settings.Save();
+        }
+        if (open) PitchMonitor.UpdateFrom(_controller.Pitch);
+        Dispatcher.BeginInvoke(UpdateCaptureTooltip, DispatcherPriority.Loaded);
+    }
+
+    private void UpdatePitchMaxHeight()
+    {
+        if (!_pitchPanelOpen)
+        {
+            PitchRow.MaxHeight = 0;
+            return;
+        }
+        double bodyH = RootGrid.ActualHeight > 100 ? RootGrid.ActualHeight - 48 : Height - 48;
+        PitchRow.MaxHeight = Math.Clamp(bodyH - 130, PitchMinH, PitchMaxH);
+    }
+
+    private void OnPitchSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        if (!_pitchPanelOpen) return;
+        _pitchPanelHeight = Math.Clamp(PitchRow.ActualHeight, PitchMinH, PitchMaxH);
+        _settings.PitchPanelHeight = Math.Round(_pitchPanelHeight);
+        _settings.Save();
         UpdateCaptureTooltip();
     }
 
@@ -315,15 +379,45 @@ public partial class MainWindow : Window
     {
         if (IsEditorOpen && !_controller.IsRecording) return;
         float mp = _controller.TakeMicPeak(), bp = _controller.TakeBackingPeak();
-        _micLevel = mp > _micLevel ? mp : _micLevel * 0.85f;
-        _backLevel = bp > _backLevel ? bp : _backLevel * 0.85f;
+        _micLevel = mp > _micLevel ? mp : _micLevel * 0.88f;
+        _backLevel = bp > _backLevel ? bp : _backLevel * 0.88f;
         MicMeter.Value = Library.PeakToMeter(_micLevel);
         BackMeter.Value = Library.PeakToMeter(_backLevel);
+        UpdatePitchUi(snapAutoFollow: false);
         if (_controller.IsRecording)
         {
             ElapsedText.Text = Library.FormatDuration(_controller.Elapsed);
-            if (++_recTick % 10 == 0) RecDot.Opacity = RecDot.Opacity > 0.5 ? 0.3 : 1.0;
+            if (++_recTick % 15 == 0) RecDot.Opacity = RecDot.Opacity > 0.5 ? 0.3 : 1.0;
         }
+    }
+
+    internal void RefreshPitchUiForSnapshot() => UpdatePitchUi(snapAutoFollow: true);
+
+    private void UpdatePitchUi(bool snapAutoFollow)
+    {
+        var reading = _controller.Pitch.GetLiveReading();
+        var zoneBrush = PitchMonitorControl.BrushForZone(reading.Zone);
+        if (reading.IsVoiced)
+        {
+            PitchNoteText.Text = reading.NoteName;
+            PitchNoteText.Foreground = zoneBrush;
+            PitchCentsText.Text = reading.CentsText;
+            PitchCentsText.Foreground = zoneBrush;
+            PitchBarMarker.Background = zoneBrush;
+            PitchBarMarker.Visibility = Visibility.Visible;
+            double w = PitchBarCanvas.ActualWidth > 12 ? PitchBarCanvas.ActualWidth : 83;
+            double frac = Math.Clamp(reading.Cents / 50.0, -1.0, 1.0);
+            double x = w * 0.5 + frac * (w * 0.5 - PitchBarMarker.Width * 0.5) - PitchBarMarker.Width * 0.5;
+            Canvas.SetLeft(PitchBarMarker, x);
+        }
+        else
+        {
+            PitchNoteText.Text = "--";
+            PitchNoteText.Foreground = (Brush)FindResource("SubtleTextBrush");
+            PitchCentsText.Text = "";
+            PitchBarMarker.Visibility = Visibility.Collapsed;
+        }
+        if (_pitchPanelOpen) PitchMonitor.UpdateFrom(_controller.Pitch, snapAutoFollow);
     }
 
     // ---------------- Recording (in-place viewfinder) ----------------
@@ -340,7 +434,7 @@ public partial class MainWindow : Window
         EditorHostBorder.Visibility = Visibility.Collapsed;
         CaptureTopBar.Visibility = Visibility.Visible;
         PinToggle.Visibility = Visibility.Visible;
-        ViewportFrame.Visibility = Visibility.Visible;
+        CaptureAreaGrid.Visibility = Visibility.Visible;
         Topmost = _settings.TopmostInCapture;
         if (!_controller.DevicesOpen) OpenDevices();
         UpdateCaptureTooltip();
@@ -413,8 +507,8 @@ public partial class MainWindow : Window
         OutputBox.Visibility = recording ? Visibility.Collapsed : Visibility.Visible;
         MicMeter.Height = recording ? 6 : 3;
         BackMeter.Height = recording ? 6 : 3;
-        MicCol.MaxWidth = recording ? 110 : 250;
-        OutCol.MaxWidth = recording ? 110 : 250;
+        MicCol.MaxWidth = recording ? 110 : 240;
+        OutCol.MaxWidth = recording ? 110 : 240;
 
         var frameBrush = (Brush)FindResource(recording ? "RecordBrush" : "FrameIdleBrush");
         ViewportFrame.BorderBrush = frameBrush;
@@ -424,6 +518,7 @@ public partial class MainWindow : Window
         SettingsButton.IsEnabled = !recording;
         PinToggle.IsEnabled = !recording;
         TakesList.IsEnabled = !recording;
+        PitchSplitter.IsEnabled = !recording;
     }
 
     private async Task FinishRecordingAsync(bool discard)
@@ -539,7 +634,7 @@ public partial class MainWindow : Window
 
     private void EnterEditorChrome()
     {
-        if (!IsEditorOpen && ViewportFrame.Visibility == Visibility.Visible)
+        if (!IsEditorOpen && CaptureAreaGrid.Visibility == Visibility.Visible)
         {
             if (WindowState == WindowState.Normal)
             {
@@ -557,7 +652,7 @@ public partial class MainWindow : Window
         Topmost = false;
         CaptureTopBar.Visibility = Visibility.Collapsed;
         PinToggle.Visibility = Visibility.Collapsed;
-        ViewportFrame.Visibility = Visibility.Collapsed;
+        CaptureAreaGrid.Visibility = Visibility.Collapsed;
         EditorTopBar.Visibility = Visibility.Visible;
         EditorHostBorder.Visibility = Visibility.Visible;
     }

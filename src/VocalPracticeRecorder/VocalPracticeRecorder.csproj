@@ -13,7 +13,7 @@
     <CETCompat>false</CETCompat>
     <AssemblyTitle>练唱录制</AssemblyTitle>
     <Product>练唱录制 VocalPracticeRecorder</Product>
-    <Version>0.3.2</Version>
+    <Version>0.4.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

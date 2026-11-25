@@ -13,6 +13,9 @@ public sealed class AudioTrackRecorder : IDisposable
 {
     private readonly WasapiRecorder _recorder;
     private readonly object _lock = new();
+    private readonly Action<ReadOnlySpan<float>, int>? _floatTap;
+    private readonly Action<int>? _silenceTap;
+    private float[] _pcm16Scratch = [];
     private WaveFileWriter? _writer;
     private long _clockOrigin;
     private long _firstDevicePos = -1;
@@ -29,11 +32,17 @@ public sealed class AudioTrackRecorder : IDisposable
     public long GapFramesFilled { get; private set; }
     public Exception? Error { get; private set; }
 
-    public AudioTrackRecorder(MMDevice device, bool loopback)
+    public AudioTrackRecorder(
+        MMDevice device,
+        bool loopback,
+        Action<ReadOnlySpan<float>, int>? floatTap = null,
+        Action<int>? silenceTap = null)
     {
         DeviceName = device.FriendlyName;
         DeviceId = device.ID;
         IsLoopback = loopback;
+        _floatTap = floatTap;
+        _silenceTap = silenceTap;
         _recorder = Build(device, loopback, raw: !loopback) ?? Build(device, loopback, raw: false)
             ?? throw new InvalidOperationException($"无法打开音频设备：{device.FriendlyName}");
         _recorder.DataAvailable += OnData;
@@ -106,6 +115,27 @@ public sealed class AudioTrackRecorder : IDisposable
                 if (v > max) max = v;
             }
             _peak = max;
+            _floatTap?.Invoke(floats, fmt.Channels);
+        }
+        else if (!silent && fmt.BitsPerSample == 16 &&
+                 (fmt.Encoding == WaveFormatEncoding.Pcm || fmt.Encoding == WaveFormatEncoding.Extensible))
+        {
+            var pcm16 = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, short>(buffer);
+            if (_pcm16Scratch.Length < pcm16.Length) _pcm16Scratch = new float[pcm16.Length];
+            float max = _peak;
+            for (int i = 0; i < pcm16.Length; i++)
+            {
+                float v = pcm16[i] / 32768f;
+                _pcm16Scratch[i] = v;
+                float a = Math.Abs(v);
+                if (a > max) max = a;
+            }
+            _peak = max;
+            _floatTap?.Invoke(_pcm16Scratch.AsSpan(0, pcm16.Length), fmt.Channels);
+        }
+        else if (silent)
+        {
+            _silenceTap?.Invoke(frames);
         }
 
         lock (_lock)

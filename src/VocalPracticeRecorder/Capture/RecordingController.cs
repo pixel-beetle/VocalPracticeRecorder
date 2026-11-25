@@ -45,6 +45,7 @@ public sealed class RecordingController : IDisposable
     private SessionInfo? _session;
     private long _origin;
 
+    public PitchTracker Pitch { get; } = new();
     public bool IsRecording => _session != null;
     public SessionInfo? Current => _session;
     public double Elapsed => _session == null ? 0 : (Stopwatch.GetTimestamp() - _origin) / (double)Stopwatch.Frequency;
@@ -60,7 +61,10 @@ public sealed class RecordingController : IDisposable
         CloseDevices();
         var micDev = AudioDevices.Get(micId);
         var outDev = AudioDevices.Get(outputId);
-        _mic = new AudioTrackRecorder(micDev, loopback: false);
+        _mic = new AudioTrackRecorder(micDev, loopback: false,
+            floatTap: (samples, ch) => Pitch.PushInterleaved(samples, ch),
+            silenceTap: frames => Pitch.PushSilence(frames));
+        Pitch.Configure(_mic.WaveFormat.SampleRate, _mic.WaveFormat.Channels);
         _loopback = new AudioTrackRecorder(outDev, loopback: true);
 
         // WASAPI loopback delivers no packets while nothing is playing; rendering silence keeps

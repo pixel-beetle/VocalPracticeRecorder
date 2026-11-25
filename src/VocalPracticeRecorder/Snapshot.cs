@@ -64,6 +64,59 @@ internal static class Snapshot
             throw new InvalidOperationException($"{label}: Windows 11 DWM backdrop is active (type={backdrop}), which blocks transparency!");
     }
 
+    private static void LoadDemoPitchTrace(MainWindow win)
+    {
+        var samples = new List<PitchSample>();
+        const double now = 6.0;
+        // Build a realistic 5.8s vocal phrase with vibrato, breath gap, slightly flat/sharp notes, ending on G#4 +5¢.
+        for (double t = 0.2; t <= now; t += 0.02)
+        {
+            double? midi = null;
+            if (t < 1.35)
+                midi = 62.0 + 0.06 * Math.Sin(2 * Math.PI * 5.2 * t); // D4 in tune
+            else if (t < 2.20)
+                midi = 64.0 + (t < 1.55 ? (t - 1.35) / 0.20 * 0.0 : 0) + 0.18 * Math.Sin(2 * Math.PI * 5.6 * t); // E4 vibrato
+            else if (t < 3.10)
+                midi = 67.0 + 0.08 * Math.Sin(2 * Math.PI * 5.4 * t); // G4 in tune
+            else if (t < 3.55)
+                midi = null; // breath rest gap
+            else if (t < 4.35)
+                midi = 69.0 - 0.18 + 0.06 * Math.Sin(2 * Math.PI * 5.0 * t); // A4 slightly flat (-18¢, amber)
+            else if (t < 5.05)
+                midi = 71.0 + 0.34; // B4 sharp (+34¢, coral)
+            else
+                midi = 68.0 + 0.05 + 0.06 * Math.Sin(2 * Math.PI * 5.5 * (t - 5.05)); // G#4 in tune (+5¢, green)
+
+            var r = midi is { } m
+                ? PitchMath.FromFrequency(PitchMath.MidiToHz(m), 0.96, 0.18f)
+                : PitchReading.Silent;
+            samples.Add(new PitchSample(t, r));
+        }
+        // Ensure final live point is exact G#4 +5¢ for crisp inspection.
+        samples[^1] = new PitchSample(now, PitchMath.FromFrequency(PitchMath.MidiToHz(68.05), 0.97, 0.20f));
+        win.Controller.Pitch.LoadSnapshotSamples(samples, now);
+        win.RefreshPitchUiForSnapshot();
+    }
+
+    private static void AssertPitchPanelInvariants(Window w, string label)
+    {
+        var rootEl = (FrameworkElement)w.Content;
+        var vp = (FrameworkElement)w.FindName("CaptureViewport");
+        var pp = (FrameworkElement)w.FindName("PitchPanelBorder");
+        var trueBmp = RenderTrueAlpha(rootEl, 1);
+        var hole = vp.TransformToAncestor(rootEl).TransformBounds(new Rect(0, 0, vp.ActualWidth, vp.ActualHeight));
+        var panel = pp.TransformToAncestor(rootEl).TransformBounds(new Rect(0, 0, pp.ActualWidth, pp.ActualHeight));
+
+        if (hole.Height < 110)
+            throw new InvalidOperationException($"{label}: capture viewport squeezed too short ({hole.Height:0}px)");
+        if (hole.Bottom > panel.Top + 0.5)
+            throw new InvalidOperationException($"{label}: capture viewport overlaps pitch panel (holeBottom={hole.Bottom:0.0}, panelTop={panel.Top:0.0})");
+        var panelCenter = SamplePixel(trueBmp, (int)(panel.X + panel.Width / 2), (int)(panel.Y + panel.Height / 2));
+        if (panelCenter.A < 250)
+            throw new InvalidOperationException($"{label}: pitch panel is not opaque (A={panelCenter.A})");
+        Log.Info($"snapshot {label}: holeH={hole.Height:0} panelH={panel.Height:0} panelA={panelCenter.A}");
+    }
+
     public static async Task<int> RunAsync(string[] args)
     {
         string outDir = args[0];
@@ -73,6 +126,7 @@ internal static class Snapshot
             Persist = false, // NEVER touch %APPDATA%\VocalPracticeRecorder\settings.json
             DataRoot = args.Length > 1 ? (args[1] == "demo" ? await DemoData.CreateAsync() : args[1]) : null,
             SidebarOpen = false,
+            PitchPanelOpen = false,
             TopmostInCapture = false,
         };
         var win = new MainWindow(settings)
@@ -90,9 +144,12 @@ internal static class Snapshot
         Log.Info($"snapshot wda: on={exclOn} off={exclOff}");
         if (!exclOn || !exclOff) throw new InvalidOperationException($"SetExcludeFromCapture failed: on={exclOn} off={exclOff}");
 
-        // State 1: Capture Mode, sidebar collapsed.
+        // Load realistic vocal pitch trace so both TopBar pill and bottom pitch curve render live data.
+        LoadDemoPitchTrace(win);
+        await Task.Delay(100);
+
+        // State 1: Capture Mode, sidebar & pitch drawer collapsed (live pitch pill active in TopBar).
         AssertCaptureTransparency(win, "capture-collapsed");
-        // Save TRUE transparent PNG (alpha=0 hole!) + preview-over-checker PNG.
         var rootEl = (FrameworkElement)win.Content;
         Save(RenderTrueAlpha(rootEl, 1), Path.Combine(outDir, "1-capture-true-alpha.png"));
         Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "1-capture-collapsed.png"));
@@ -101,29 +158,46 @@ internal static class Snapshot
         var topBar = (FrameworkElement)rootGrid.Children[0];
         Crop(RenderOverChecker(rootEl, 2), rootEl, topBar, Path.Combine(outDir, "4-topbar-capture-2x.png"));
 
-        // State 1b: Capture Recording state.
+        // State 1c: Capture Mode with docked bottom Pitch Monitor expanded (+ 2x close-up).
+        win.SetPitchPanel(true, save: false);
+        win.RefreshPitchUiForSnapshot();
+        await Task.Delay(200);
+        AssertCaptureTransparency(win, "capture-pitch-open");
+        AssertPitchPanelInvariants(win, "capture-pitch-open");
+        Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "1c-capture-pitch-open.png"));
+        var pitchPanel = (FrameworkElement)win.FindName("PitchPanelBorder");
+        Crop(RenderOverChecker(rootEl, 2), rootEl, pitchPanel, Path.Combine(outDir, "14-pitch-monitor-2x.png"));
+
+        // State 1b: Capture Recording state (with pitch drawer open so red frame + live pitch pill + curve are all verified).
         win.SetRecordingUi(true);
         ((TextBlock)win.FindName("ElapsedText")).Text = "1:24";
         ((ProgressBar)win.FindName("MicMeter")).Value = 0.65;
         ((ProgressBar)win.FindName("BackMeter")).Value = 0.48;
+        win.RefreshPitchUiForSnapshot();
         await Task.Delay(200);
         AssertCaptureTransparency(win, "capture-recording");
+        AssertPitchPanelInvariants(win, "capture-recording");
         Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "1b-capture-recording.png"));
         Crop(RenderOverChecker(rootEl, 2), rootEl, topBar, Path.Combine(outDir, "4b-topbar-recording-2x.png"));
         win.SetRecordingUi(false);
         await Task.Delay(150);
 
-        // State 2: Narrow Capture Mode (640x420).
-        win.Width = 640; win.Height = 420;
+        // State 2: Narrow Capture Mode (660x420) with pitch panel open (worst-case height & topbar width stress test).
+        win.Width = 660; win.Height = 420;
+        win.RefreshPitchUiForSnapshot();
         await Task.Delay(350);
-        AssertCaptureTransparency(win, "capture-narrow");
-        Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "2-capture-narrow-640.png"));
+        AssertCaptureTransparency(win, "capture-narrow-pitch");
+        AssertPitchPanelInvariants(win, "capture-narrow-pitch");
+        Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "2-capture-narrow-660.png"));
+        Crop(RenderOverChecker(rootEl, 2), rootEl, topBar, Path.Combine(outDir, "4c-topbar-narrow-2x.png"));
 
-        // State 3: Capture Mode with sidebar expanded.
+        // State 3: Capture Mode with sidebar AND pitch drawer both expanded.
         win.Width = 1060; win.Height = 680;
         win.SetSidebar(true, save: false);
+        win.RefreshPitchUiForSnapshot();
         await Task.Delay(350);
-        AssertCaptureTransparency(win, "capture-sidebar-open");
+        AssertCaptureTransparency(win, "capture-sidebar-pitch-open");
+        AssertPitchPanelInvariants(win, "capture-sidebar-pitch-open");
         Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "3-capture-sidebar-open.png"));
 
         // State 4: Editor Mode (must be 100% solid AND MediaElement must render actual video pixels!).
