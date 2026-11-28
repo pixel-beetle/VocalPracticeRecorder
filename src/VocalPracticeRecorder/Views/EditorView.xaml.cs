@@ -469,18 +469,20 @@ public partial class EditorView : UserControl
         TrimText.Text = string.Join(" · ", parts);
         TrimText.ToolTip = $"{Library.FormatTimecode(e.TrimStart)} → {Library.FormatTimecode(_s.EffectiveTrimEnd)}";
 
-        (string label, string tip, string prefix) = e.AlignMode switch
+        (string label, string tip) = e.AlignMode switch
         {
-            AlignMode.Auto => ("✓ 自动对齐", "从麦克风伴奏回声自动测得", "✓ "),
-            AlignMode.Remembered => ("沿用上次", "沿用同设备手动调好的偏移", "微调 "),
-            AlignMode.Calibrated => ("设备延迟", "按外放录音测得的设备延迟对齐", "✓ "),
-            AlignMode.Manual => ("手动", e.AutoReliable ? $"自动检测值 {-(e.AutoDelayMs ?? 0):+0;−0;0} ms" : "已为当前设备记住", "微调 "),
-            _ => ("", "", "微调 "),
+            AlignMode.Auto => ("✓ 自动对齐", "从麦克风伴奏回声自动测得"),
+            AlignMode.Remembered => ("沿用上次", "沿用同设备手动调好的偏移"),
+            AlignMode.Calibrated => ("设备延迟", "按外放录音测得的设备延迟对齐"),
+            AlignMode.Manual => ("手动", e.AutoReliable ? $"自动检测值 {-(e.AutoDelayMs ?? 0):+0;−0;0} ms" : "已为当前设备记住"),
+            _ => ("", ""),
         };
         AlignBadge.Text = label;
         AlignBadge.ToolTip = string.IsNullOrEmpty(tip) ? null : tip;
         AlignBadge.Visibility = string.IsNullOrEmpty(label) ? Visibility.Collapsed : Visibility.Visible;
-        TuneSummaryText.Text = $"{prefix}{e.VocalOffsetMs:+0;−0;0}ms{(e.VocalPolish ? " · 润色" : "")}";
+        TuneSummaryText.Text = e.VocalPolish ? "人声设置 · 润色" : "人声设置";
+        string alignDetail = string.IsNullOrEmpty(label) ? $"{e.VocalOffsetMs:+0;−0;0} ms" : $"{e.VocalOffsetMs:+0;−0;0} ms（{label}）";
+        TuneToggle.ToolTip = $"人声对齐 {alignDetail}、轻润色与输入通道（键盘 ← → ±10ms，Shift ±50ms）";
 
         bool suggest = !e.AutoReliable && e.AutoDelayMs is { } ad && Math.Abs(e.VocalOffsetMs + Math.Round(ad)) > 1 && Math.Abs(ad) >= 5;
         SuggestButton.Visibility = suggest ? Visibility.Visible : Visibility.Collapsed;

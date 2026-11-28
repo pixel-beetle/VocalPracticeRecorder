@@ -129,6 +129,7 @@ internal static class Snapshot
             PitchPanelOpen = false,
             TopmostInCapture = false,
         };
+        ThemeManager.Apply(settings);
         var win = new MainWindow(settings)
         {
             WindowStartupLocation = WindowStartupLocation.Manual,
@@ -241,19 +242,45 @@ internal static class Snapshot
                 if (vg.ActualWidth < 80 || bg.ActualWidth < 80)
                     throw new InvalidOperationException($"Slider squeezed too narrow: vocal={vg.ActualWidth:0}px backing={bg.ActualWidth:0}px");
 
-                // Invariant: Play & Export buttons must share our unified studio cobalt accent (never leak Windows system pink).
+                // Invariant 1: Play & Export buttons must match ThemeManager.CurrentAccent (never leak Windows system accent).
+                var acc = ThemeManager.CurrentAccent;
                 foreach (var btnName in new[] { "PlayButton", "ExportButton" })
                 {
                     var btn = (FrameworkElement)ed.FindName(btnName);
                     var br = btn.TransformToAncestor(rootEl).TransformBounds(new Rect(0, 0, btn.ActualWidth, btn.ActualHeight));
                     var bp = SamplePixel(edTrue, (int)(br.X + 4), (int)(br.Y + 4));
-                    if (bp.B <= bp.R + 40)
-                        throw new InvalidOperationException($"{btnName} leaked non-cobalt accent color: RGB=({bp.R},{bp.G},{bp.B})");
+                    if (Math.Abs(bp.R - acc.R) > 25 || Math.Abs(bp.G - acc.G) > 25 || Math.Abs(bp.B - acc.B) > 25)
+                        throw new InvalidOperationException($"{btnName} does not match theme accent #{acc.R:X2}{acc.G:X2}{acc.B:X2}, got RGB=({bp.R},{bp.G},{bp.B})");
                 }
+
+                // Invariant 2: Vocal slider active filled track must align vertically with the background track (<= 1px center drift).
+                var vrSlider = vg.TransformToAncestor(rootEl).TransformBounds(new Rect(0, 0, vg.ActualWidth, vg.ActualHeight));
+                int leftX = (int)(vrSlider.X + 12);
+                var vocCol = ThemeManager.CurrentVocal;
+                int vocMinY = int.MaxValue, vocMaxY = -1;
+                for (int y = (int)vrSlider.Y; y < (int)vrSlider.Bottom; y++)
+                {
+                    var sp = SamplePixel(edTrue, leftX, y);
+                    if (Math.Abs(sp.R - vocCol.R) < 35 && Math.Abs(sp.G - vocCol.G) < 35 && Math.Abs(sp.B - vocCol.B) < 35)
+                    {
+                        if (y < vocMinY) vocMinY = y;
+                        if (y > vocMaxY) vocMaxY = y;
+                    }
+                }
+                double sliderMidY = vrSlider.Y + vrSlider.Height * 0.5;
+                double fillMidY = 0.5 * (vocMinY + vocMaxY);
+                if (vocMaxY < vocMinY || Math.Abs(fillMidY - sliderMidY) > 1.2)
+                    throw new InvalidOperationException($"VocalGain active track misaligned: fillY=[{vocMinY}..{vocMaxY}] mid={fillMidY:0.0} vs sliderMid={sliderMidY:0.0}");
 
                 Save(edTrue, Path.Combine(outDir, "6-editor.png"));
                 var full = RenderTrueAlpha(rootEl, 2);
-                Crop(full, rootEl, topBar, Path.Combine(outDir, "7-topbar-editor-2x.png"));
+                // Focus EditorTitleBox briefly so 7-topbar-editor-2x.png captures its crisp editing border!
+                var titleBox = (TextBox)win.FindName("EditorTitleBox");
+                titleBox.Focus();
+                await Task.Delay(80);
+                var fullTitleFocus = RenderTrueAlpha(rootEl, 2);
+                Crop(fullTitleFocus, rootEl, topBar, Path.Combine(outDir, "7-topbar-editor-2x.png"));
+                ed.Focus();
                 var controls = (FrameworkElement)ed.FindName("ControlsPanel");
                 Crop(full, rootEl, controls, Path.Combine(outDir, "11-mix-controls-2x.png"));
 
@@ -276,13 +303,14 @@ internal static class Snapshot
             }
         }
 
-        // State 5: Settings dialog + inline move confirmation overlay.
+        // State 5: Settings dialog (main view with appearance color pickers + inline move confirmation overlay).
         var sw = new SettingsWindow(settings)
         {
             WindowStartupLocation = WindowStartupLocation.Manual, Left = -30000, Top = -30000, ShowActivated = false,
         };
         sw.Show();
         await Task.Delay(300);
+        Save(RenderOverSolid((FrameworkElement)sw.Content, 2), Path.Combine(outDir, "12-settings-main-2x.png"));
         await sw.ShowConfirmPreviewForSnapshotAsync("把现有的 3 遍录音（68 MB）一起移动到新位置？",
             "目标：D:\\VocalPractice\n「仅改位置」会把旧录音留在原处，不再显示在列表里。");
         await Task.Delay(150);

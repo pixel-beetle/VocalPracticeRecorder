@@ -10,7 +10,7 @@
                 <ResourceDictionary Source="pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- ==================== Unified "Studio Slate & Cobalt" Design Tokens ==================== -->
+            <!-- ==================== Unified Studio Design Tokens ==================== -->
 
             <!-- Surfaces: cool matte graphite ramp -->
             <SolidColorBrush x:Key="SurfaceBaseBrush" Color="#15181E" />
@@ -32,12 +32,14 @@
             <SolidColorBrush x:Key="SubtleTextBrush" Color="#8C95A4" />
             <SolidColorBrush x:Key="TextMutedBrush" Color="#666F7E" />
 
-            <!-- Brand Accent (disciplined studio cobalt — replaces all Windows system accent leaks) -->
-            <SolidColorBrush x:Key="AccentBrush" Color="#3B8EEA" />
-            <SolidColorBrush x:Key="AccentHoverBrush" Color="#4E9CF2" />
-            <SolidColorBrush x:Key="AccentPressedBrush" Color="#2C7BD4" />
-            <SolidColorBrush x:Key="AccentSubtleBgBrush" Color="#243B8EEA" />
-            <SolidColorBrush x:Key="AccentSubtleBorderBrush" Color="#703B8EEA" />
+            <!-- Brand Accent (default #E04B7A rose-peach aligned with app icon; live-updatable via ThemeManager) -->
+            <SolidColorBrush x:Key="AccentBrush" Color="#E04B7A" />
+            <SolidColorBrush x:Key="AccentHoverBrush" Color="#E5648D" />
+            <SolidColorBrush x:Key="AccentPressedBrush" Color="#BC3F66" />
+            <SolidColorBrush x:Key="AccentSubtleBgBrush" Color="#28E04B7A" />
+            <SolidColorBrush x:Key="AccentSubtleBorderBrush" Color="#78E04B7A" />
+            <SolidColorBrush x:Key="AccentSubtlePressedBrush" Color="#3AE04B7A" />
+            <SolidColorBrush x:Key="AccentTextSoftBrush" Color="#F297B3" />
 
             <!-- Semantic Audio & Status Colors -->
             <SolidColorBrush x:Key="RecordBrush" Color="#E04F54" />
@@ -45,16 +47,16 @@
             <SolidColorBrush x:Key="RecordPressedBrush" Color="#C63E43" />
             <SolidColorBrush x:Key="VocalBrush" Color="#4AA3F0" />
             <SolidColorBrush x:Key="BackingBrush" Color="#967AE6" />
-            <SolidColorBrush x:Key="FrameIdleBrush" Color="#3B8EEA" />
-            <SolidColorBrush x:Key="PlayAccentBrush" Color="#3B8EEA" />
-            <SolidColorBrush x:Key="PlayAccentHoverBrush" Color="#4E9CF2" />
-            <SolidColorBrush x:Key="PlayAccentPressedBrush" Color="#2C7BD4" />
+            <SolidColorBrush x:Key="FrameIdleBrush" Color="#3B9CF0" />
+            <SolidColorBrush x:Key="PlayAccentBrush" Color="#E04B7A" />
+            <SolidColorBrush x:Key="PlayAccentHoverBrush" Color="#E5648D" />
+            <SolidColorBrush x:Key="PlayAccentPressedBrush" Color="#BC3F66" />
             <SolidColorBrush x:Key="PitchInTuneBrush" Color="#38C688" />
             <SolidColorBrush x:Key="PitchNearBrush" Color="#E8AE38" />
             <SolidColorBrush x:Key="PitchOffBrush" Color="#E45F64" />
             <SolidColorBrush x:Key="StarBrush" Color="#F2BE3B" />
 
-            <!-- Override Fluent system theme brushes so Windows user accent colors (e.g. pink) never leak in -->
+            <!-- Override Fluent system theme brushes so Windows user accent colors never leak in -->
             <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#1C1F26" />
             <SolidColorBrush x:Key="ApplicationPageBackgroundThemeBrush" Color="#1C1F26" />
             <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#232730" />
@@ -65,14 +67,14 @@
             <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#42495A" />
             <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#ECEFF4" />
             <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#9BA3B0" />
-            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#3B8EEA" />
-            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#4E9CF2" />
-            <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#2C7BD4" />
-            <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#6DB3F8" />
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#E04B7A" />
+            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#E5648D" />
+            <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#BC3F66" />
+            <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#F297B3" />
             <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="SystemAccentColorPrimaryBrush" Color="#3B8EEA" />
-            <SolidColorBrush x:Key="SystemAccentColorSecondaryBrush" Color="#4E9CF2" />
-            <SolidColorBrush x:Key="SystemAccentColorTertiaryBrush" Color="#2C7BD4" />
+            <SolidColorBrush x:Key="SystemAccentColorPrimaryBrush" Color="#E04B7A" />
+            <SolidColorBrush x:Key="SystemAccentColorSecondaryBrush" Color="#E5648D" />
+            <SolidColorBrush x:Key="SystemAccentColorTertiaryBrush" Color="#BC3F66" />
             <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#18FFFFFF" />
             <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#10FFFFFF" />
 
@@ -113,9 +115,9 @@
                 </Setter>
             </Style>
 
-            <!-- Primary Brand Action Button (Export, Confirm, OK — unified cobalt blue) -->
+            <!-- Primary Brand Action Button (Play, Export, Confirm, OK — follows Dynamic AccentBrush) -->
             <Style x:Key="PrimaryButton" TargetType="Button">
-                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
                 <Setter Property="BorderBrush" Value="#24FFFFFF" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="Foreground" Value="White" />
@@ -134,10 +136,10 @@
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Bg" Property="Background" Value="{StaticResource AccentHoverBrush}" />
+                                    <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentHoverBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Bg" Property="Background" Value="{StaticResource AccentPressedBrush}" />
+                                    <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentPressedBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsEnabled" Value="False">
                                     <Setter Property="Opacity" Value="0.4" />
@@ -191,7 +193,7 @@
                 </Setter>
             </Style>
 
-            <!-- Compact Quiet Secondary Tool Button (Editor toolbar, export utility actions) -->
+            <!-- Compact Quiet Secondary Tool Button -->
             <Style x:Key="GhostToolButton" TargetType="Button">
                 <Setter Property="Background" Value="{StaticResource SurfaceElevatedBrush}" />
                 <Setter Property="BorderBrush" Value="{StaticResource BorderControlBrush}" />
@@ -226,7 +228,7 @@
                 </Setter>
             </Style>
 
-            <!-- Subtle Pill Toggle (Pitch overlay, Tune drawer, Light polish) -->
+            <!-- Subtle Pill Toggle (Pitch overlay, 人声设置 drawer, 轻润色) -->
             <Style x:Key="SubtlePillToggle" TargetType="ToggleButton">
                 <Setter Property="Background" Value="{StaticResource SurfaceElevatedBrush}" />
                 <Setter Property="BorderBrush" Value="{StaticResource BorderControlBrush}" />
@@ -250,12 +252,12 @@
                                     <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource BorderControlHoverBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="Bg" Property="Background" Value="{StaticResource AccentSubtleBgBrush}" />
-                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource AccentSubtleBorderBrush}" />
-                                    <Setter Property="Foreground" Value="#88C4FF" />
+                                    <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentSubtleBgBrush}" />
+                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource AccentSubtleBorderBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentTextSoftBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Bg" Property="Background" Value="#343B8EEA" />
+                                    <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentSubtlePressedBrush}" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -285,11 +287,11 @@
                                     <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource BorderControlHoverBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="Bg" Property="Background" Value="{StaticResource AccentSubtleBgBrush}" />
-                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource AccentSubtleBorderBrush}" />
+                                    <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentSubtleBgBrush}" />
+                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource AccentSubtleBorderBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Bg" Property="Background" Value="#343B8EEA" />
+                                    <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentSubtlePressedBrush}" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -347,11 +349,11 @@
                                     <Setter TargetName="Bg" Property="Background" Value="#1CFFFFFF" />
                                 </Trigger>
                                 <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="Bg" Property="Background" Value="{StaticResource AccentSubtleBgBrush}" />
-                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource AccentSubtleBorderBrush}" />
+                                    <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentSubtleBgBrush}" />
+                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource AccentSubtleBorderBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Bg" Property="Background" Value="#343B8EEA" />
+                                    <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentSubtlePressedBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsEnabled" Value="False">
                                     <Setter Property="Opacity" Value="0.38" />
@@ -410,25 +412,25 @@
                 </Setter>
             </Style>
 
-            <!-- Studio Audio Slider: sleek 4px track colored by Foreground (Vocal Blue / Backing Purple) + matte white cap -->
+            <!-- Studio Audio Slider: background track, active fill, and thumb share exact center Y (0px vertical drift) -->
             <Style TargetType="Slider">
                 <Setter Property="IsMoveToPointEnabled" Value="True" />
-                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                 <Setter Property="Height" Value="22" />
                 <Setter Property="Focusable" Value="False" />
                 <Setter Property="Cursor" Value="Hand" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Slider">
-                            <Grid VerticalAlignment="Center" Height="22" Background="Transparent">
+                            <Grid Height="22" Background="Transparent" VerticalAlignment="Center">
                                 <Border Height="4" CornerRadius="2" Background="{StaticResource SurfaceControlBrush}" VerticalAlignment="Center" />
-                                <Track x:Name="PART_Track" VerticalAlignment="Center">
+                                <Track x:Name="PART_Track" VerticalAlignment="Stretch">
                                     <Track.DecreaseRepeatButton>
                                         <RepeatButton Style="{x:Null}" OverridesDefaultStyle="True" Command="Slider.DecreaseLarge" Focusable="False"
-                                                      Background="{TemplateBinding Foreground}">
+                                                      VerticalAlignment="Stretch" Background="{TemplateBinding Foreground}">
                                             <RepeatButton.Template>
                                                 <ControlTemplate TargetType="RepeatButton">
-                                                    <Grid Background="Transparent" Height="18">
+                                                    <Grid Background="Transparent">
                                                         <Border Height="4" CornerRadius="2,0,0,2" Background="{TemplateBinding Background}"
                                                                 VerticalAlignment="Center" />
                                                     </Grid>
@@ -437,17 +439,18 @@
                                         </RepeatButton>
                                     </Track.DecreaseRepeatButton>
                                     <Track.IncreaseRepeatButton>
-                                        <RepeatButton Style="{x:Null}" OverridesDefaultStyle="True" Command="Slider.IncreaseLarge" Focusable="False">
+                                        <RepeatButton Style="{x:Null}" OverridesDefaultStyle="True" Command="Slider.IncreaseLarge" Focusable="False"
+                                                      VerticalAlignment="Stretch">
                                             <RepeatButton.Template>
                                                 <ControlTemplate TargetType="RepeatButton">
-                                                    <Border Height="18" Background="Transparent" />
+                                                    <Border Background="Transparent" />
                                                 </ControlTemplate>
                                             </RepeatButton.Template>
                                         </RepeatButton>
                                     </Track.IncreaseRepeatButton>
                                     <Track.Thumb>
                                         <Thumb x:Name="Thumb" Style="{x:Null}" OverridesDefaultStyle="True" Width="13" Height="13"
-                                               BorderBrush="{TemplateBinding Foreground}">
+                                               VerticalAlignment="Center" BorderBrush="{TemplateBinding Foreground}">
                                             <Thumb.Template>
                                                 <ControlTemplate TargetType="Thumb">
                                                     <Ellipse x:Name="Dot" Width="13" Height="13" Fill="{StaticResource TextPrimaryBrush}"
@@ -478,7 +481,7 @@
                 </Setter>
             </Style>
 
-            <!-- Studio CheckBox (cobalt accent, zero system-pink) -->
+            <!-- Studio CheckBox -->
             <Style TargetType="CheckBox">
                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
                 <Setter Property="FontSize" Value="12" />
@@ -504,8 +507,8 @@
                                     <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource BorderControlHoverBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="Box" Property="Background" Value="{StaticResource AccentBrush}" />
-                                    <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                    <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                    <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                                     <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
                                 </Trigger>
                                 <Trigger Property="IsEnabled" Value="False">
@@ -517,7 +520,7 @@
                 </Setter>
             </Style>
 
-            <!-- Studio RadioButton (cobalt ring + dot, zero system-pink) -->
+            <!-- Studio RadioButton -->
             <Style TargetType="RadioButton">
                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
                 <Setter Property="FontSize" Value="12.5" />
@@ -530,7 +533,7 @@
                                 <Grid Width="16" Height="16" VerticalAlignment="Center">
                                     <Ellipse x:Name="Ring" Width="16" Height="16" Fill="{StaticResource SurfaceInputBrush}"
                                              Stroke="{StaticResource BorderControlBrush}" StrokeThickness="1.2" />
-                                    <Ellipse x:Name="InnerDot" Width="8" Height="8" Fill="{StaticResource AccentBrush}" Visibility="Collapsed" />
+                                    <Ellipse x:Name="InnerDot" Width="8" Height="8" Fill="{DynamicResource AccentBrush}" Visibility="Collapsed" />
                                 </Grid>
                                 <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center" />
                             </StackPanel>
@@ -539,7 +542,7 @@
                                     <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource BorderControlHoverBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource AccentBrush}" />
+                                    <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource AccentBrush}" />
                                     <Setter TargetName="InnerDot" Property="Visibility" Value="Visible" />
                                 </Trigger>
                                 <Trigger Property="IsEnabled" Value="False">
@@ -551,14 +554,14 @@
                 </Setter>
             </Style>
 
-            <!-- Studio TextBox (clean recessed matte input with cobalt focus outline) -->
+            <!-- Studio TextBox -->
             <Style TargetType="TextBox">
                 <Setter Property="Background" Value="{StaticResource SurfaceInputBrush}" />
                 <Setter Property="BorderBrush" Value="{StaticResource BorderControlBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
-                <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}" />
+                <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
                 <Setter Property="Padding" Value="8,0" />
                 <Setter Property="Height" Value="30" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -576,7 +579,7 @@
                                     <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource BorderControlHoverBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsKeyboardFocused" Value="True">
-                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -584,10 +587,46 @@
                 </Setter>
             </Style>
 
-            <!-- Studio ProgressBar (clean flat cobalt track) -->
+            <!-- Inline Editable Song Title (invisible border at rest, subtle hint on hover, crisp Accent box while editing) -->
+            <Style x:Key="InlineTitleTextBox" TargetType="TextBox">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="Padding" Value="6,0" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border x:Name="Bg" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bg" Property="Background" Value="#14FFFFFF" />
+                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource BorderControlBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="Bg" Property="Background" Value="{StaticResource SurfaceInputBrush}" />
+                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Studio ProgressBar -->
             <Style TargetType="ProgressBar">
                 <Setter Property="Background" Value="{StaticResource SurfaceControlBrush}" />
-                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="Template">
                     <Setter.Value>
@@ -611,7 +650,7 @@
                 </Setter>
             </Style>
 
-            <!-- Studio Sidebar Take ListBoxItem (replaces muddy pink selection with crisp cobalt left accent card) -->
+            <!-- Studio Sidebar Take ListBoxItem -->
             <Style x:Key="SidebarTakeItemStyle" TargetType="ListBoxItem">
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderBrush" Value="Transparent" />
@@ -627,7 +666,7 @@
                                     BorderThickness="1" CornerRadius="6" Margin="{TemplateBinding Margin}">
                                 <Grid>
                                     <Border x:Name="AccentBar" Width="3" CornerRadius="1.5" HorizontalAlignment="Left" Margin="1,6,0,6"
-                                            Background="{StaticResource AccentBrush}" Visibility="Collapsed" />
+                                            Background="{DynamicResource AccentBrush}" Visibility="Collapsed" />
                                     <ContentPresenter Margin="{TemplateBinding Padding}" />
                                 </Grid>
                             </Border>
@@ -636,8 +675,8 @@
                                     <Setter TargetName="Card" Property="Background" Value="#14FFFFFF" />
                                 </Trigger>
                                 <Trigger Property="IsSelected" Value="True">
-                                    <Setter TargetName="Card" Property="Background" Value="{StaticResource AccentSubtleBgBrush}" />
-                                    <Setter TargetName="Card" Property="BorderBrush" Value="#503B8EEA" />
+                                    <Setter TargetName="Card" Property="Background" Value="{DynamicResource AccentSubtleBgBrush}" />
+                                    <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentSubtleBorderBrush}" />
                                     <Setter TargetName="AccentBar" Property="Visibility" Value="Visible" />
                                 </Trigger>
                             </ControlTemplate.Triggers>

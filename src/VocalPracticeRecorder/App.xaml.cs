@@ -40,6 +40,7 @@ public partial class App : Application
             return;
         }
         base.OnStartup(e);
+        ThemeManager.Apply(AppSettings.Load());
         MainWindow = new MainWindow();
         MainWindow.Show();
     }

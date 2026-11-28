@@ -34,7 +34,56 @@
                     <ComboBox x:Name="CrfBox" Width="190" Height="30" Padding="10,0,26,0" VerticalContentAlignment="Center" Margin="8,0,0,0" SelectionChanged="OnQualityChanged" ToolTip="导出视频画质" />
                 </StackPanel>
 
-                <Button Content="关闭" IsCancel="True" HorizontalAlignment="Right" MinWidth="80" Margin="0,20,0,0" Click="OnClose" />
+                <!-- Appearance: Accent + Vocal/Backing track colors -->
+                <DockPanel Margin="0,14,0,6" LastChildFill="False">
+                    <TextBlock DockPanel.Dock="Left" Text="外观" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center" />
+                    <Button DockPanel.Dock="Right" Content="恢复默认" Style="{StaticResource GhostToolButton}" Height="24"
+                            Padding="8,0" FontSize="11.5" Click="OnResetColors" />
+                </DockPanel>
+                <Border Background="{StaticResource SurfaceElevatedBrush}" BorderBrush="{StaticResource BorderSubtleBrush}"
+                        BorderThickness="1" CornerRadius="6" Padding="12,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="58" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="主题色" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <StackPanel x:Name="AccentSwatches" Grid.Row="0" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" />
+                        <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse x:Name="AccentPreviewDot" Width="12" Height="12" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBox x:Name="AccentHexBox" Width="82" Height="26" FontFamily="Consolas" FontSize="11.5"
+                                     Padding="6,0" TextChanged="OnHexChanged" Tag="accent" ToolTip="自定义颜色 (#RRGGBB)" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="人声轨" FontSize="12" VerticalAlignment="Center" Margin="0,8,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <StackPanel x:Name="VocalSwatches" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,8,0,0" />
+                        <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,8,0,0">
+                            <Ellipse x:Name="VocalPreviewDot" Width="12" Height="12" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBox x:Name="VocalHexBox" Width="82" Height="26" FontFamily="Consolas" FontSize="11.5"
+                                     Padding="6,0" TextChanged="OnHexChanged" Tag="vocal" ToolTip="自定义颜色 (#RRGGBB)" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="伴奏轨" FontSize="12" VerticalAlignment="Center" Margin="0,8,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <StackPanel x:Name="BackingSwatches" Grid.Row="2" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,8,0,0" />
+                        <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,8,0,0">
+                            <Ellipse x:Name="BackingPreviewDot" Width="12" Height="12" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBox x:Name="BackingHexBox" Width="82" Height="26" FontFamily="Consolas" FontSize="11.5"
+                                     Padding="6,0" TextChanged="OnHexChanged" Tag="backing" ToolTip="自定义颜色 (#RRGGBB)" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Button Content="关闭" IsCancel="True" HorizontalAlignment="Right" MinWidth="80" Margin="0,18,0,0" Click="OnClose" />
             </StackPanel>
         </Border>
 

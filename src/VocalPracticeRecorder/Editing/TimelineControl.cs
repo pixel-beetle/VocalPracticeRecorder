@@ -54,9 +54,6 @@ public sealed class TimelineControl : FrameworkElement
     private static readonly Brush RulerBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x23, 0x27, 0x30)));
     private static readonly Brush TextBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x9B, 0xA3, 0xB0)));
     private static readonly Brush OutBrush = Frozen(new SolidColorBrush(Color.FromArgb(175, 10, 12, 16)));
-    private static readonly Pen VocalPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x4A, 0xA3, 0xF0))), 1));
-    private static readonly Pen VocalDimPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x4A, 0x4A, 0xA3, 0xF0))), 1));
-    private static readonly Pen BackPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x96, 0x7A, 0xE6))), 1));
     private static readonly Pen PitchGridPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF))), 0.75));
     private static readonly Pen PitchInTunePen = MakeRoundPen(Color.FromRgb(0x38, 0xC6, 0x88), 1.8);
     private static readonly Pen PitchNearPen = MakeRoundPen(Color.FromRgb(0xE8, 0xAE, 0x38), 1.8);
@@ -132,7 +129,11 @@ public sealed class TimelineControl : FrameworkElement
         Focusable = true;
         ClipToBounds = true;
         Cursor = Cursors.IBeam;
+        Loaded += (_, _) => ThemeManager.ThemeChanged += OnThemeChanged;
+        Unloaded += (_, _) => ThemeManager.ThemeChanged -= OnThemeChanged;
     }
+
+    private void OnThemeChanged() => Refresh();
 
     public void Load(SessionInfo s, Peaks vocal, Peaks backing)
     {
@@ -306,9 +307,13 @@ public sealed class TimelineControl : FrameworkElement
 
             double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
             bool showPitch = _showPitchOverlay && _pitch != null && _pitch.Count > 0;
-            if (_vocal != null) DrawWave(dc, _vocal, s.VocalPlacement, vocalLane, showPitch ? VocalDimPen : VocalPen, w);
+            var vc = ThemeManager.CurrentVocal;
+            var bc = ThemeManager.CurrentBacking;
+            var vocalPen = Frozen(new Pen(Frozen(new SolidColorBrush(showPitch ? Color.FromArgb(0x4A, vc.R, vc.G, vc.B) : vc)), 1));
+            var backPen = Frozen(new Pen(Frozen(new SolidColorBrush(bc)), 1));
+            if (_vocal != null) DrawWave(dc, _vocal, s.VocalPlacement, vocalLane, vocalPen, w);
             if (showPitch) DrawPitchOverlay(dc, _pitch!, s.VocalPlacement, vocalLane, w, dpi);
-            if (_backing != null) DrawWave(dc, _backing, s.BackingPlacement, backLane, BackPen, w);
+            if (_backing != null) DrawWave(dc, _backing, s.BackingPlacement, backLane, backPen, w);
 
             // Deleted sections: hatched red over both lanes, with a label when wide enough.
             foreach (var c in s.Edit.Cuts)

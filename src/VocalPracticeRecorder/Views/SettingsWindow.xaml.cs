@@ -2,8 +2,12 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Shapes;
 using Microsoft.Win32;
 using VocalPracticeRecorder.Core;
+using Path = System.IO.Path;
 
 namespace VocalPracticeRecorder.Views;
 
@@ -13,6 +17,7 @@ public partial class SettingsWindow : Window
 
     private readonly AppSettings _settings;
     private bool _loading = true;
+    private bool _syncingColors;
     private bool _busy;
     private TaskCompletionSource<MoveChoice>? _confirmTcs;
 
@@ -33,6 +38,7 @@ public partial class SettingsWindow : Window
         FpsBox.SelectedIndex = Math.Max(0, Array.IndexOf(FpsValues, settings.Fps));
         CrfBox.ItemsSource = Crfs.Select(c => c.Label).ToList();
         CrfBox.SelectedIndex = Math.Max(0, Array.FindIndex(Crfs, c => c.Crf == settings.Export.VideoCrf));
+        BuildColorPickers();
         _loading = false;
         Refresh();
         Closing += (_, e) =>
@@ -281,4 +287,105 @@ public partial class SettingsWindow : Window
     }
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();
+
+    // ---------------- Appearance Colors ----------------
+
+    private void BuildColorPickers()
+    {
+        PopulateSwatches(AccentSwatches, ThemeManager.AccentPresets, hex => ApplyColor("accent", hex));
+        PopulateSwatches(VocalSwatches, ThemeManager.VocalPresets, hex => ApplyColor("vocal", hex));
+        PopulateSwatches(BackingSwatches, ThemeManager.BackingPresets, hex => ApplyColor("backing", hex));
+        SyncColorUi();
+    }
+
+    private static void PopulateSwatches(Panel host, ColorPreset[] presets, Action<string> onPick)
+    {
+        host.Children.Clear();
+        foreach (var p in presets)
+        {
+            if (!ThemeManager.TryParseHex(p.Hex, out var col)) continue;
+            var outer = new Border
+            {
+                Width = 24, Height = 24, CornerRadius = new CornerRadius(12),
+                BorderThickness = new Thickness(2), BorderBrush = Brushes.Transparent,
+                Padding = new Thickness(2), Margin = new Thickness(0, 0, 6, 0),
+                Cursor = Cursors.Hand, ToolTip = $"{p.Name} ({p.Hex})", Tag = p.Hex,
+                Child = new Ellipse { Fill = new SolidColorBrush(col) },
+            };
+            outer.MouseLeftButtonDown += (_, _) => onPick(p.Hex);
+            host.Children.Add(outer);
+        }
+    }
+
+    private void ApplyColor(string which, string hex)
+    {
+        switch (which)
+        {
+            case "accent": _settings.AccentColorHex = hex; break;
+            case "vocal": _settings.VocalColorHex = hex; break;
+            case "backing": _settings.BackingColorHex = hex; break;
+        }
+        ThemeManager.Apply(_settings);
+        _settings.Save();
+        SyncColorUi();
+    }
+
+    private void OnHexChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_loading || _syncingColors || sender is not TextBox tb || tb.Tag is not string which) return;
+        if (!ThemeManager.TryParseHex(tb.Text, out var col)) return;
+        string normalized = ThemeManager.ToHex(col);
+        switch (which)
+        {
+            case "accent": _settings.AccentColorHex = normalized; break;
+            case "vocal": _settings.VocalColorHex = normalized; break;
+            case "backing": _settings.BackingColorHex = normalized; break;
+        }
+        ThemeManager.Apply(_settings);
+        _settings.Save();
+        SyncColorUi(skipBox: tb);
+    }
+
+    private void OnResetColors(object sender, RoutedEventArgs e)
+    {
+        _settings.AccentColorHex = ThemeManager.DefaultAccentHex;
+        _settings.VocalColorHex = ThemeManager.DefaultVocalHex;
+        _settings.BackingColorHex = ThemeManager.DefaultBackingHex;
+        ThemeManager.Apply(_settings);
+        _settings.Save();
+        SyncColorUi();
+    }
+
+    private void SyncColorUi(TextBox? skipBox = null)
+    {
+        _syncingColors = true;
+        try
+        {
+            string aHex = ThemeManager.ToHex(ThemeManager.CurrentAccent);
+            string vHex = ThemeManager.ToHex(ThemeManager.CurrentVocal);
+            string bHex = ThemeManager.ToHex(ThemeManager.CurrentBacking);
+
+            if (skipBox != AccentHexBox) AccentHexBox.Text = aHex;
+            if (skipBox != VocalHexBox) VocalHexBox.Text = vHex;
+            if (skipBox != BackingHexBox) BackingHexBox.Text = bHex;
+
+            AccentPreviewDot.Fill = new SolidColorBrush(ThemeManager.CurrentAccent);
+            VocalPreviewDot.Fill = new SolidColorBrush(ThemeManager.CurrentVocal);
+            BackingPreviewDot.Fill = new SolidColorBrush(ThemeManager.CurrentBacking);
+
+            MarkActiveSwatch(AccentSwatches, aHex);
+            MarkActiveSwatch(VocalSwatches, vHex);
+            MarkActiveSwatch(BackingSwatches, bHex);
+        }
+        finally { _syncingColors = false; }
+    }
+
+    private static void MarkActiveSwatch(Panel host, string activeHex)
+    {
+        foreach (var child in host.Children)
+        {
+            if (child is Border b && b.Tag is string hex)
+                b.BorderBrush = hex.Equals(activeHex, StringComparison.OrdinalIgnoreCase) ? Brushes.White : Brushes.Transparent;
+        }
+    }
 }

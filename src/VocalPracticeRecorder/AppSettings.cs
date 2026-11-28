@@ -23,6 +23,10 @@ public sealed class AppSettings
     public bool EditorPitchOverlay { get; set; }
     public bool ExportBurnPitch { get; set; }
     public bool TopmostInCapture { get; set; } = true;
+    /// <summary>Theme accent color (#RRGGBB); defaults to the app icon's rose-peach tone.</summary>
+    public string AccentColorHex { get; set; } = ThemeManager.DefaultAccentHex;
+    public string VocalColorHex { get; set; } = ThemeManager.DefaultVocalHex;
+    public string BackingColorHex { get; set; } = ThemeManager.DefaultBackingHex;
     public int Fps { get; set; } = 20;
     public int MaxHeight { get; set; } = 720;
     public ExportKind LastExportKind { get; set; } = ExportKind.MixVideo;
