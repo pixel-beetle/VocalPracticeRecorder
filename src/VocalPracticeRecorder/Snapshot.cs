@@ -151,7 +151,13 @@ internal static class Snapshot
         // State 1: Capture Mode, sidebar & pitch drawer collapsed (live pitch pill active in TopBar).
         AssertCaptureTransparency(win, "capture-collapsed");
         var rootEl = (FrameworkElement)win.Content;
-        Save(RenderTrueAlpha(rootEl, 1), Path.Combine(outDir, "1-capture-true-alpha.png"));
+        // Assert idle frame is distinctly blue (easy to spot over dark browsers).
+        var idleTrue = RenderTrueAlpha(rootEl, 1);
+        var idleFramePx = SamplePixel(idleTrue, idleTrue.PixelWidth - 3, idleTrue.PixelHeight / 2);
+        if (idleFramePx.B <= idleFramePx.R + 50)
+            throw new InvalidOperationException($"Idle frame should be clearly blue over dark browsers, got RGB=({idleFramePx.R},{idleFramePx.G},{idleFramePx.B})");
+
+        Save(idleTrue, Path.Combine(outDir, "1-capture-true-alpha.png"));
         Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "1-capture-collapsed.png"));
 
         var rootGrid = (Grid)win.FindName("RootGrid");
@@ -236,8 +242,14 @@ internal static class Snapshot
                 Save(edTrue, Path.Combine(outDir, "6-editor.png"));
                 var full = RenderTrueAlpha(rootEl, 2);
                 Crop(full, rootEl, topBar, Path.Combine(outDir, "7-topbar-editor-2x.png"));
-                var grid = (Grid)ed.Content;
-                Crop(full, rootEl, (FrameworkElement)grid.Children[3], Path.Combine(outDir, "11-mix-controls-2x.png"));
+                var controls = (FrameworkElement)ed.FindName("ControlsPanel");
+                Crop(full, rootEl, controls, Path.Combine(outDir, "11-mix-controls-2x.png"));
+
+                // Also inspect expanded alignment & mic-channel drawer at 2x magnification.
+                ed.SetTuneDrawerOpen(true);
+                await Task.Delay(150);
+                var fullExpanded = RenderTrueAlpha(rootEl, 2);
+                Crop(fullExpanded, rootEl, controls, Path.Combine(outDir, "11b-mix-tune-open-2x.png"));
             }
         }
 

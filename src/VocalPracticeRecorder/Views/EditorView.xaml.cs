@@ -46,12 +46,12 @@ public partial class EditorView : UserControl
         VocalGain.Value = s.Edit.VocalGainDb;
         BackingGain.Value = s.Edit.BackingGainDb;
         BackingMute.IsChecked = s.Edit.BackingMuted;
-        (settings.LastExportKind switch
+        ExportKindBox.SelectedIndex = settings.LastExportKind switch
         {
-            ExportKind.MixAudio => KindMix,
-            ExportKind.DryVocal => KindDry,
-            _ => KindVideo,
-        }).IsChecked = true;
+            ExportKind.MixAudio => 1,
+            ExportKind.DryVocal => 2,
+            _ => 0,
+        };
         var last = s.Exports.LastOrDefault();
         if (last != null && File.Exists(last.Path)) ShowExported(last.Path);
 
@@ -93,6 +93,13 @@ public partial class EditorView : UserControl
         TimeText.Text = Library.FormatTimecode(t);
     }
 
+    private void UpdatePlayGlyph(bool playing)
+    {
+        PlayGlyph.Data = System.Windows.Media.Geometry.Parse(playing
+            ? "M3,2 H6.5 V14 H3 Z M9.5,2 H13 V14 H9.5 Z"
+            : "M3,1.5 L13.5,8 L3,14.5 Z");
+    }
+
     private void TogglePlay()
     {
         if (_engine.IsPlaying)
@@ -101,7 +108,7 @@ public partial class EditorView : UserControl
             Video.Pause();
             _videoPlaying = false;
             Video.Position = TimeSpan.FromSeconds(_engine.Position);
-            PlayButton.Content = "▶";
+            UpdatePlayGlyph(false);
             return;
         }
         double from = Timeline.Selection?.Start ?? Timeline.Playhead;
@@ -110,14 +117,14 @@ public partial class EditorView : UserControl
         Video.Position = TimeSpan.FromSeconds(from);
         Video.Play();
         _videoPlaying = true;
-        PlayButton.Content = "⏸";
+        UpdatePlayGlyph(true);
     }
 
     private void OnEnded()
     {
         Video.Pause();
         _videoPlaying = false;
-        PlayButton.Content = "▶";
+        UpdatePlayGlyph(false);
         Timeline.Playhead = _engine.Position;
     }
 
@@ -337,32 +344,53 @@ public partial class EditorView : UserControl
         MarkDirty();
     }
 
+    private void OnToggleTune(object sender, RoutedEventArgs e)
+    {
+        SetTuneDrawerOpen(TuneToggle.IsChecked == true);
+        Focus();
+    }
+
+    internal void SetTuneDrawerOpen(bool open)
+    {
+        TuneToggle.IsChecked = open;
+        TuneDrawer.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        TuneChevron.Data = System.Windows.Media.Geometry.Parse(open ? "M1,4.5 L4,1.5 L7,4.5" : "M1,1.5 L4,4.5 L7,1.5");
+    }
+
     private void UpdateTexts()
     {
         var e = _s.Edit;
         OffsetText.Text = $"{e.VocalOffsetMs:+0;−0;0} ms";
-        VocalGainText.Text = $"{e.VocalGainDb:+0;−0;0} dB";
-        BackingGainText.Text = $"{e.BackingGainDb:+0;−0;0} dB";
+        VocalGainText.Text = $"{e.VocalGainDb:+0;−0;0}dB";
+        BackingGainText.Text = $"{e.BackingGainDb:+0;−0;0}dB";
         BackingGain.IsEnabled = !e.BackingMuted;
+        BackingGain.Opacity = e.BackingMuted ? 0.35 : 1.0;
+        BackingMuteGlyph.Data = System.Windows.Media.Geometry.Parse(e.BackingMuted
+            ? "M2,6 H5 L9,2.5 V13.5 L5,10 H2 Z M11,5.5 L15,10.5 M15,5.5 L11,10.5"
+            : "M2,6 H5 L9,2.5 V13.5 L5,10 H2 Z M11.2,5.3 A3.5,3.5 0 0 1 11.2,10.7");
+        BackingMute.Foreground = e.BackingMuted
+            ? (System.Windows.Media.Brush)FindResource("RecordBrush")
+            : (System.Windows.Media.Brush)FindResource("TextFillColorPrimaryBrush");
 
         double len = EditTimeline.OutputDuration(_s);
-        var parts = new List<string> { Library.FormatDuration(len) };
+        var parts = new List<string> { $"/ {Library.FormatDuration(len)}" };
         if (e.Cuts.Count > 0) parts.Add($"删 {e.Cuts.Count} 段");
         if (Timeline.Selection is { } r) parts.Add($"选 {r.Length:0.0}s");
         TrimText.Text = string.Join(" · ", parts);
         TrimText.ToolTip = $"{Library.FormatTimecode(e.TrimStart)} → {Library.FormatTimecode(_s.EffectiveTrimEnd)}";
 
-        (string label, string tip) = e.AlignMode switch
+        (string label, string tip, string prefix) = e.AlignMode switch
         {
-            AlignMode.Auto => ("✓ 自动对齐", "从麦克风伴奏回声自动测得"),
-            AlignMode.Remembered => ("沿用上次", "沿用同设备手动调好的偏移"),
-            AlignMode.Calibrated => ("设备延迟", "按外放录音测得的设备延迟对齐"),
-            AlignMode.Manual => ("手动", e.AutoReliable ? $"自动检测值 {-(e.AutoDelayMs ?? 0):+0;−0;0} ms" : "已为当前设备记住"),
-            _ => ("", ""),
+            AlignMode.Auto => ("✓ 自动对齐", "从麦克风伴奏回声自动测得", "✓ "),
+            AlignMode.Remembered => ("沿用上次", "沿用同设备手动调好的偏移", "微调 "),
+            AlignMode.Calibrated => ("设备延迟", "按外放录音测得的设备延迟对齐", "✓ "),
+            AlignMode.Manual => ("手动", e.AutoReliable ? $"自动检测值 {-(e.AutoDelayMs ?? 0):+0;−0;0} ms" : "已为当前设备记住", "微调 "),
+            _ => ("", "", "微调 "),
         };
         AlignBadge.Text = label;
         AlignBadge.ToolTip = string.IsNullOrEmpty(tip) ? null : tip;
         AlignBadge.Visibility = string.IsNullOrEmpty(label) ? Visibility.Collapsed : Visibility.Visible;
+        TuneSummaryText.Text = $"{prefix}{e.VocalOffsetMs:+0;−0;0}ms";
 
         bool suggest = !e.AutoReliable && e.AutoDelayMs is { } ad && Math.Abs(e.VocalOffsetMs + Math.Round(ad)) > 1 && Math.Abs(ad) >= 5;
         SuggestButton.Visibility = suggest ? Visibility.Visible : Visibility.Collapsed;
@@ -371,8 +399,12 @@ public partial class EditorView : UserControl
 
     // ---------- Export ----------
 
-    private ExportKind SelectedKind => KindMix.IsChecked == true ? ExportKind.MixAudio
-        : KindDry.IsChecked == true ? ExportKind.DryVocal : ExportKind.MixVideo;
+    private ExportKind SelectedKind => ExportKindBox.SelectedIndex switch
+    {
+        1 => ExportKind.MixAudio,
+        2 => ExportKind.DryVocal,
+        _ => ExportKind.MixVideo,
+    };
 
     private async void OnExport(object sender, RoutedEventArgs e) => await ExportAsync();
 

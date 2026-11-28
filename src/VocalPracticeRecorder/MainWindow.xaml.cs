@@ -65,8 +65,13 @@ public partial class MainWindow : Window
     private bool _suppressSelection;
     private bool _devicesLoading;
     private double _sidebarWidth = 276;
+    private bool _sidebarOpen;
+    private int _sidebarAddedLeftPx;
+    private bool _sidebarClamped;
     private double _pitchPanelHeight = 156;
     private bool _pitchPanelOpen;
+    private int _pitchAddedBottomPx;
+    private bool _pitchClamped;
     private string? _lastDeviceError;
     private PixelRect? _savedCaptureBounds;
     private bool _expandedForEditor;
@@ -117,11 +122,12 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "找不到 ffmpeg.exe。\n请把 ffmpeg.exe 放到程序所在目录，或安装 FFmpeg 并加入 PATH。", "缺少 FFmpeg",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        SetSidebar(_settings.SidebarOpen, save: false);
+        SetSidebar(_settings.SidebarOpen, save: false, resizeOutward: false);
         _pitchPanelHeight = Math.Clamp(_settings.PitchPanelHeight, PitchMinH, PitchMaxH);
-        SetPitchPanel(_settings.PitchPanelOpen, save: false);
+        SetPitchPanel(_settings.PitchPanelOpen, save: false, resizeOutward: false);
         PinToggle.IsChecked = _settings.TopmostInCapture;
         Topmost = _settings.TopmostInCapture;
+        UpdateWindowFrameBrush();
         UpdateMaximizeGlyph();
         LoadDevices();
         RefreshLibrary();
@@ -210,23 +216,69 @@ public partial class MainWindow : Window
     }
 
     private void OnToggleSidebar(object sender, RoutedEventArgs e) =>
-        SetSidebar(SidebarToggle.IsChecked == true, save: true);
+        SetSidebar(SidebarToggle.IsChecked == true, save: true, resizeOutward: true);
 
-    public void SetSidebar(bool open, bool save = true)
+    public void SetSidebar(bool open, bool save = true, bool resizeOutward = true)
     {
+        bool changed = open != _sidebarOpen;
         if (!open && SidebarCol.ActualWidth >= 200) _sidebarWidth = SidebarCol.ActualWidth;
+
+        bool canOutward = changed && resizeOutward && _loaded && !IsEditorOpen && WindowState == WindowState.Normal;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        int panelPx = (int)Math.Round((_sidebarWidth + 1.0) * dpi.DpiScaleX);
+
+        if (open)
+        {
+            if (canOutward)
+            {
+                var cur = Native.GetPhysicalBounds(this);
+                var work = Native.GetMonitorWorkArea(this);
+                if (cur.Right > work.X && cur.X < work.Right)
+                {
+                    var expanded = RegionMath.ExpandOutwardLeft(cur, work, panelPx, out _sidebarAddedLeftPx);
+                    _sidebarClamped = _sidebarAddedLeftPx < panelPx;
+                    if (expanded != cur) Native.SetPhysicalBounds(this, expanded);
+                }
+            }
+            else if (changed)
+            {
+                // Startup restore already includes sidebar width in saved bounds.
+                _sidebarAddedLeftPx = panelPx;
+                _sidebarClamped = false;
+            }
+        }
+
+        _sidebarOpen = open;
         SidebarToggle.IsChecked = open;
         SidebarPanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         SidebarSplitter.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         SidebarCol.MinWidth = open ? 220 : 0;
         SidebarCol.MaxWidth = open ? 360 : 0;
         SidebarCol.Width = open ? new GridLength(_sidebarWidth) : new GridLength(0);
+
+        if (!open && canOutward)
+        {
+            var cur = Native.GetPhysicalBounds(this);
+            var work = Native.GetMonitorWorkArea(this);
+            if (cur.Right > work.X && cur.X < work.Right)
+            {
+                int shrinkPx = _sidebarClamped ? _sidebarAddedLeftPx : panelPx;
+                int minW = (int)Math.Ceiling(MinWidth * dpi.DpiScaleX);
+                var collapsed = RegionMath.CollapseInwardLeft(cur, shrinkPx, minW);
+                if (collapsed != cur) Native.SetPhysicalBounds(this, collapsed);
+            }
+            _sidebarAddedLeftPx = 0;
+            _sidebarClamped = false;
+        }
+
         if (save)
         {
             _settings.SidebarOpen = open;
+            if (!IsEditorOpen && WindowState == WindowState.Normal && _loaded)
+                _settings.CaptureWindowBounds = Native.GetPhysicalBounds(this);
             _settings.Save();
         }
-        UpdateCaptureTooltip();
+        Dispatcher.BeginInvoke(UpdateCaptureTooltip, DispatcherPriority.Loaded);
     }
 
     private void OnTogglePitch(object sender, RoutedEventArgs e)
@@ -237,13 +289,42 @@ public partial class MainWindow : Window
             PitchToggle.IsChecked = _pitchPanelOpen;
             return;
         }
-        SetPitchPanel(PitchToggle.IsChecked == true, save: true);
+        SetPitchPanel(PitchToggle.IsChecked == true, save: true, resizeOutward: true);
     }
 
-    public void SetPitchPanel(bool open, bool save = true)
+    public void SetPitchPanel(bool open, bool save = true, bool resizeOutward = true)
     {
+        bool changed = open != _pitchPanelOpen;
         if (!open && PitchRow.ActualHeight >= PitchMinH)
             _pitchPanelHeight = Math.Clamp(PitchRow.ActualHeight, PitchMinH, PitchMaxH);
+
+        bool canOutward = changed && resizeOutward && _loaded && !IsEditorOpen && WindowState == WindowState.Normal;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        // Collapsed: ViewportFrame.Bottom=6; Expanded: ViewportFrame.Bottom=3 + PitchSplitter=3 + PitchRow=H -> exact delta = H.
+        int panelPx = (int)Math.Round(_pitchPanelHeight * dpi.DpiScaleY);
+        double targetWindowHeightDip = Height;
+
+        if (open)
+        {
+            if (canOutward)
+            {
+                var cur = Native.GetPhysicalBounds(this);
+                var work = Native.GetMonitorWorkArea(this);
+                if (cur.Bottom > work.Y && cur.Y < work.Bottom)
+                {
+                    var expanded = RegionMath.ExpandOutwardBottom(cur, work, panelPx, out _pitchAddedBottomPx);
+                    _pitchClamped = _pitchAddedBottomPx < panelPx;
+                    if (expanded != cur) Native.SetPhysicalBounds(this, expanded);
+                    targetWindowHeightDip = expanded.Height / dpi.DpiScaleY;
+                }
+            }
+            else if (changed)
+            {
+                _pitchAddedBottomPx = panelPx;
+                _pitchClamped = false;
+                if (_loaded) targetWindowHeightDip = Native.GetPhysicalBounds(this).Height / dpi.DpiScaleY;
+            }
+        }
 
         _pitchPanelOpen = open;
         PitchToggle.IsChecked = open;
@@ -252,29 +333,59 @@ public partial class MainWindow : Window
         PitchSplitter.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         ViewportFrame.BorderThickness = open ? new Thickness(6, 3, 6, 3) : new Thickness(6, 3, 6, 6);
 
-        UpdatePitchMaxHeight();
+        UpdatePitchMaxHeight(targetWindowHeightDip);
         PitchRow.MinHeight = open ? PitchMinH : 0;
         PitchRow.Height = open ? new GridLength(Math.Min(_pitchPanelHeight, PitchRow.MaxHeight)) : new GridLength(0);
+
+        if (!open && canOutward)
+        {
+            var cur = Native.GetPhysicalBounds(this);
+            var work = Native.GetMonitorWorkArea(this);
+            if (cur.Bottom > work.Y && cur.Y < work.Bottom)
+            {
+                int shrinkPx = _pitchClamped ? _pitchAddedBottomPx : panelPx;
+                int minH = (int)Math.Ceiling(MinHeight * dpi.DpiScaleY);
+                var collapsed = RegionMath.CollapseInwardBottom(cur, shrinkPx, minH);
+                if (collapsed != cur) Native.SetPhysicalBounds(this, collapsed);
+            }
+            _pitchAddedBottomPx = 0;
+            _pitchClamped = false;
+        }
 
         if (save)
         {
             _settings.PitchPanelOpen = open;
             _settings.PitchPanelHeight = Math.Round(_pitchPanelHeight);
+            if (!IsEditorOpen && WindowState == WindowState.Normal && _loaded)
+                _settings.CaptureWindowBounds = Native.GetPhysicalBounds(this);
             _settings.Save();
         }
         if (open) PitchMonitor.UpdateFrom(_controller.Pitch);
         Dispatcher.BeginInvoke(UpdateCaptureTooltip, DispatcherPriority.Loaded);
     }
 
-    private void UpdatePitchMaxHeight()
+    private void UpdatePitchMaxHeight(double? windowHeightDip = null)
     {
         if (!_pitchPanelOpen)
         {
             PitchRow.MaxHeight = 0;
             return;
         }
-        double bodyH = RootGrid.ActualHeight > 100 ? RootGrid.ActualHeight - 48 : Height - 48;
+        double totalH = windowHeightDip ?? (RootGrid.ActualHeight > 100 ? RootGrid.ActualHeight : Height);
+        double bodyH = totalH - 48;
         PitchRow.MaxHeight = Math.Clamp(bodyH - 130, PitchMinH, PitchMaxH);
+    }
+
+    private void UpdateWindowFrameBrush()
+    {
+        if (IsEditorOpen)
+        {
+            OuterFrame.BorderBrush = (Brush)FindResource("ControlStrokeColorDefaultBrush");
+            return;
+        }
+        var frameBrush = (Brush)FindResource(_controller.IsRecording ? "RecordBrush" : "FrameIdleBrush");
+        ViewportFrame.BorderBrush = frameBrush;
+        OuterFrame.BorderBrush = frameBrush;
     }
 
     private void OnPitchSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
@@ -436,6 +547,7 @@ public partial class MainWindow : Window
         PinToggle.Visibility = Visibility.Visible;
         CaptureAreaGrid.Visibility = Visibility.Visible;
         Topmost = _settings.TopmostInCapture;
+        UpdateWindowFrameBrush();
         if (!_controller.DevicesOpen) OpenDevices();
         UpdateCaptureTooltip();
     }
@@ -512,7 +624,7 @@ public partial class MainWindow : Window
 
         var frameBrush = (Brush)FindResource(recording ? "RecordBrush" : "FrameIdleBrush");
         ViewportFrame.BorderBrush = frameBrush;
-        OuterFrame.BorderBrush = recording ? frameBrush : (Brush)FindResource("ControlStrokeColorDefaultBrush");
+        OuterFrame.BorderBrush = frameBrush;
 
         SidebarToggle.IsEnabled = !recording;
         SettingsButton.IsEnabled = !recording;
@@ -655,6 +767,7 @@ public partial class MainWindow : Window
         CaptureAreaGrid.Visibility = Visibility.Collapsed;
         EditorTopBar.Visibility = Visibility.Visible;
         EditorHostBorder.Visibility = Visibility.Visible;
+        OuterFrame.BorderBrush = (Brush)FindResource("ControlStrokeColorDefaultBrush");
     }
 
     private async void OnTakeSelected(object sender, SelectionChangedEventArgs e)

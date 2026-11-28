@@ -127,4 +127,38 @@ public class RegionMathTests
         Assert.Equal(1000, c.Width);
         Assert.Equal(700, c.Height);
     }
+
+    [Fact]
+    public void Outward_left_and_bottom_expand_keep_viewport_fixed_and_roundtrip_even_near_screen_edge()
+    {
+        var work = new PixelRect(0, 0, 1920, 1040);
+
+        // Plenty of room on left & bottom -> full outward expansion, right/top edges fixed, exact round-trip.
+        var mid = new PixelRect(400, 120, 900, 600);
+        var expL = RegionMath.ExpandOutwardLeft(mid, work, 277, out int addedL);
+        Assert.Equal(277, addedL);
+        Assert.Equal(mid.Right, expL.Right);
+        Assert.Equal(mid.X - 277, expL.X);
+        Assert.Equal(mid, RegionMath.CollapseInwardLeft(expL, addedL, minWidth: 660));
+
+        var expB = RegionMath.ExpandOutwardBottom(mid, work, 156, out int addedB);
+        Assert.Equal(156, addedB);
+        Assert.Equal(mid.Y, expB.Y);
+        Assert.Equal(mid.Bottom + 156, expB.Bottom);
+        Assert.Equal(mid, RegionMath.CollapseInwardBottom(expB, addedB, minHeight: 340));
+
+        // Near left & bottom edges -> clamps strictly inside workArea and collapses back to exact original bounds.
+        var edge = new PixelRect(50, 380, 900, 600); // only 50px left, 60px bottom
+        var clampedL = RegionMath.ExpandOutwardLeft(edge, work, 277, out int addedEdgeL);
+        Assert.Equal(50, addedEdgeL);
+        Assert.Equal(0, clampedL.X);
+        Assert.Equal(edge.Right, clampedL.Right);
+        Assert.Equal(edge, RegionMath.CollapseInwardLeft(clampedL, addedEdgeL, minWidth: 660));
+
+        var clampedB = RegionMath.ExpandOutwardBottom(edge, work, 156, out int addedEdgeB);
+        Assert.Equal(60, addedEdgeB);
+        Assert.Equal(1040, clampedB.Bottom);
+        Assert.Equal(edge.Y, clampedB.Y);
+        Assert.Equal(edge, RegionMath.CollapseInwardBottom(clampedB, addedEdgeB, minHeight: 340));
+    }
 }

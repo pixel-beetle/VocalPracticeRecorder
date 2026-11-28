@@ -102,4 +102,40 @@ public static class RegionMath
         int y = Math.Clamp(saved.Y, m.Y, m.Bottom - h);
         return new PixelRect(x, y, w, h);
     }
+
+    /// <summary>
+    /// Expands a window outward to the left by up to <paramref name="deltaPx"/> without crossing <paramref name="workArea"/>'s
+    /// left edge, keeping the right edge (and transparent capture viewport) fixed in screen coordinates.
+    /// </summary>
+    public static PixelRect ExpandOutwardLeft(PixelRect current, PixelRect workArea, int deltaPx, out int actualAddedPx)
+    {
+        int avail = Math.Max(0, current.X - workArea.X);
+        actualAddedPx = Math.Clamp(deltaPx, 0, avail);
+        return new PixelRect(current.X - actualAddedPx, current.Y, current.Width + actualAddedPx, current.Height);
+    }
+
+    /// <summary>Collapses the left edge inward by <paramref name="deltaPx"/> while preserving the right edge and <paramref name="minWidth"/>.</summary>
+    public static PixelRect CollapseInwardLeft(PixelRect current, int deltaPx, int minWidth)
+    {
+        int shrink = Math.Clamp(deltaPx, 0, Math.Max(0, current.Width - minWidth));
+        return new PixelRect(current.X + shrink, current.Y, current.Width - shrink, current.Height);
+    }
+
+    /// <summary>
+    /// Expands a window outward downward by up to <paramref name="deltaPx"/> without crossing <paramref name="workArea"/>'s
+    /// bottom edge, keeping the top edge (and transparent capture viewport) fixed in screen coordinates.
+    /// </summary>
+    public static PixelRect ExpandOutwardBottom(PixelRect current, PixelRect workArea, int deltaPx, out int actualAddedPx)
+    {
+        int avail = Math.Max(0, workArea.Bottom - current.Bottom);
+        actualAddedPx = Math.Clamp(deltaPx, 0, avail);
+        return new PixelRect(current.X, current.Y, current.Width, current.Height + actualAddedPx);
+    }
+
+    /// <summary>Collapses the bottom edge upward by <paramref name="deltaPx"/> while preserving the top edge and <paramref name="minHeight"/>.</summary>
+    public static PixelRect CollapseInwardBottom(PixelRect current, int deltaPx, int minHeight)
+    {
+        int shrink = Math.Clamp(deltaPx, 0, Math.Max(0, current.Height - minHeight));
+        return new PixelRect(current.X, current.Y, current.Width, current.Height - shrink);
+    }
 }

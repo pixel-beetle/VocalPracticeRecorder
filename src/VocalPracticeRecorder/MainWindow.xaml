@@ -11,8 +11,8 @@
         <CollectionViewSource x:Key="TakesView" />
     </Window.Resources>
 
-    <!-- Outer 1px outline keeps the borderless window crisp over both light and dark pages. -->
-    <Border x:Name="OuterFrame" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1" Background="{x:Null}">
+    <!-- Distinct idle blue (or red when recording) outline keeps the window header visible over dark browsers. -->
+    <Border x:Name="OuterFrame" BorderBrush="{StaticResource FrameIdleBrush}" BorderThickness="1.5" Background="{x:Null}">
         <Grid x:Name="RootGrid">
             <Grid.RowDefinitions>
                 <RowDefinition Height="48" />

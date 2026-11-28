@@ -5,10 +5,8 @@
              Focusable="True" FocusVisualStyle="{x:Null}">
     <Grid Margin="14,10,14,12">
         <Grid.RowDefinitions>
-            <RowDefinition Height="*" MinHeight="160" />
-            <RowDefinition Height="166" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="170" />
+            <RowDefinition Height="162" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -23,99 +21,147 @@
             <ed:TimelineControl x:Name="Timeline" ToolTipService.InitialShowDelay="800" />
         </Border>
 
-        <!-- Transport (single compact row) -->
-        <DockPanel Grid.Row="2" Margin="0,8,0,0" LastChildFill="False">
-            <Button x:Name="PlayButton" Content="▶" Click="OnPlay" Width="46" ToolTip="播放 / 暂停 (Space)" />
-            <TextBlock x:Name="TimeText" VerticalAlignment="Center" Margin="10,0" FontFamily="Consolas" FontSize="14" Text="0:00.00" />
-            <Button Content="[ 入点" Click="OnSetIn" Margin="4,0,0,0" ToolTip="设为开头 (I)" />
-            <Button Content="出点 ]" Click="OnSetOut" Margin="4,0,0,0" ToolTip="设为结尾 (O)" />
-            <Button Content="重置" Click="OnResetTrim" Margin="4,0,0,0" ToolTip="清除裁剪和删除" />
-            <Button x:Name="DeleteSelButton" Content="✂ 删除" Click="OnDeleteSelection" Margin="10,0,0,0" IsEnabled="False"
-                    ToolTip="删除拖动选出的片段 (Delete)；右键红色块恢复" />
-            <Button x:Name="SplitButton" Content="拆分" Click="OnSplit" Margin="4,0,0,0"
-                    ToolTip="在播放头处拆分为两个 take (S)" />
-            <TextBlock x:Name="TrimText" DockPanel.Dock="Right" VerticalAlignment="Center"
-                       Foreground="{StaticResource SubtleTextBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
-        </DockPanel>
+        <!-- Bottom Controls: Clear 3-tier hierarchy (Hero Transport -> Compact Mix & On-Demand Tune -> Export) -->
+        <StackPanel x:Name="ControlsPanel" Grid.Row="2" Margin="0,10,0,0">
 
-        <!-- Mix & alignment -->
-        <Grid Grid.Row="3" Margin="0,10,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="14" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-
-            <!-- Vocal alignment -->
-            <StackPanel VerticalAlignment="Center" ToolTip="人声偏移：键盘 ← → ±10ms，Shift ±50ms">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="−50" Click="OnNudge" Tag="-50" Style="{StaticResource IconButton}" />
-                    <Button Content="−10" Click="OnNudge" Tag="-10" Style="{StaticResource IconButton}" Margin="3,0" />
-                    <TextBlock x:Name="OffsetText" Width="64" TextAlignment="Center" VerticalAlignment="Center" FontSize="13.5"
-                               FontFamily="Consolas" Text="0 ms" />
-                    <Button Content="+10" Click="OnNudge" Tag="10" Style="{StaticResource IconButton}" Margin="3,0" />
-                    <Button Content="+50" Click="OnNudge" Tag="50" Style="{StaticResource IconButton}" />
-                    <Button Content="对齐" Click="OnAutoAlign" Margin="6,0,0,0" ToolTip="自动对齐" Padding="10,4" MinWidth="0" />
-                    <Button x:Name="SuggestButton" Click="OnTrySuggestion" Margin="4,0,0,0" Padding="8,4" MinWidth="0" Visibility="Collapsed"
-                            ToolTip="检测到的候选延迟，点一下试听，不对按 Ctrl+Z 撤销" />
+            <!-- Tier 1: Hero Play + Timecode on Left, Subtle Edit Tools on Right -->
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="PlayButton" Style="{StaticResource HeroPlayButton}" Click="OnPlay" ToolTip="播放 / 暂停 (Space)">
+                        <Path x:Name="PlayGlyph" Data="M3,1.5 L13.5,8 L3,14.5 Z" Fill="White" Width="16" Height="16"
+                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Button>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                        <TextBlock x:Name="TimeText" FontFamily="Consolas" FontSize="15.5" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" Text="0:00.00" />
+                        <TextBlock x:Name="TrimText" VerticalAlignment="Center" Margin="8,1,0,0"
+                                   Foreground="{StaticResource SubtleTextBrush}" FontFamily="Consolas" FontSize="12"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
                 </StackPanel>
-                <TextBlock x:Name="AlignBadge" Margin="2,4,0,0" FontSize="11" Foreground="{StaticResource SubtleTextBrush}" />
-            </StackPanel>
 
-            <!-- Levels -->
-            <Grid Grid.Column="2" VerticalAlignment="Center">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" MinWidth="80" />
-                    <ColumnDefinition Width="46" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="人声" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource VocalBrush}" />
-                <Slider x:Name="VocalGain" Grid.Column="1" Minimum="-24" Maximum="18" TickFrequency="1" IsSnapToTickEnabled="True"
-                        VerticalAlignment="Center" ValueChanged="OnGainChanged" Thumb.DragStarted="OnSliderDragStarted" />
-                <TextBlock x:Name="VocalGainText" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right" FontSize="12" />
-                <ComboBox x:Name="ChannelBox" Grid.Column="3" Margin="8,0,0,0" MinWidth="98" Height="28" Padding="8,0,22,0"
-                          VerticalContentAlignment="Center" FontSize="12" SelectionChanged="OnChannelChanged" ToolTip="麦克风输入通道">
-                    <ComboBoxItem Content="通道 1 (左)" />
-                    <ComboBoxItem Content="通道 2 (右)" />
-                    <ComboBoxItem Content="1+2 混合" />
-                </ComboBox>
-
-                <TextBlock Grid.Row="1" Text="伴奏" VerticalAlignment="Center" Margin="0,6,6,0" Foreground="{StaticResource BackingBrush}" />
-                <Slider x:Name="BackingGain" Grid.Row="1" Grid.Column="1" Minimum="-30" Maximum="12" TickFrequency="1" IsSnapToTickEnabled="True"
-                        VerticalAlignment="Center" Margin="0,6,0,0" ValueChanged="OnGainChanged" Thumb.DragStarted="OnSliderDragStarted" />
-                <TextBlock x:Name="BackingGainText" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right" FontSize="12" Margin="0,6,0,0" />
-                <CheckBox x:Name="BackingMute" Grid.Row="1" Grid.Column="3" Content="静音" Margin="8,6,0,0"
-                          Click="OnMuteChanged" ToolTip="不混入伴奏" />
-            </Grid>
-        </Grid>
-
-        <!-- Export -->
-        <Border Grid.Row="4" Margin="0,12,0,0" Padding="10,8" CornerRadius="6" BorderThickness="1"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
-            <DockPanel>
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
-                    <RadioButton x:Name="KindVideo" Content="MP4" GroupName="kind" Margin="2,0,8,0" IsChecked="True" />
-                    <RadioButton x:Name="KindMix" Content="混音 MP3" GroupName="kind" Margin="0,0,8,0" />
-                    <RadioButton x:Name="KindDry" Content="干声 MP3" GroupName="kind" Margin="0,0,10,0" />
-                    <Button x:Name="ExportButton" Content="导出" Click="OnExport" ToolTip="导出 (Ctrl+E)"
-                            Style="{StaticResource AccentButtonStyle}" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="[ 入点" Style="{StaticResource GhostToolButton}" Click="OnSetIn" ToolTip="设为开头 (I)" />
+                    <Button Content="出点 ]" Style="{StaticResource GhostToolButton}" Click="OnSetOut" Margin="4,0,0,0" ToolTip="设为结尾 (O)" />
+                    <Rectangle Width="1" Height="16" Fill="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="8,0" />
+                    <Button x:Name="DeleteSelButton" Content="✂ 删除" Style="{StaticResource GhostToolButton}" Click="OnDeleteSelection"
+                            IsEnabled="False" ToolTip="删除拖动选出的片段 (Delete)；右键红色块恢复" />
+                    <Button x:Name="SplitButton" Content="拆分" Style="{StaticResource GhostToolButton}" Click="OnSplit" Margin="4,0,0,0"
+                            ToolTip="在播放头处拆分为两个 take (S)" />
+                    <Button Style="{StaticResource GhostToolButton}" Width="28" Padding="0" Margin="4,0,0,0"
+                            Click="OnResetTrim" ToolTip="重置裁剪和删除">
+                        <Path Data="M11.5,5.5 A4.5,4.5 0 1 0 12.2,9.8 M11.5,2.5 V5.8 H8.2"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                              Width="15" Height="15" />
+                    </Button>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
-                    <Button x:Name="RevealButton" Content="打开位置" Click="OnReveal" IsEnabled="False" />
-                    <Button x:Name="CopyButton" Content="复制文件" Click="OnCopyFile" IsEnabled="False" Margin="6,0,0,0"
-                            ToolTip="复制后直接 Ctrl+V 粘贴到微信" />
-                </StackPanel>
-                <Grid Margin="12,0" VerticalAlignment="Center">
-                    <ProgressBar x:Name="ExportProgress" Height="4" Minimum="0" Maximum="1" Visibility="Collapsed" VerticalAlignment="Bottom" />
-                    <TextBlock x:Name="ExportText" Foreground="{StaticResource SubtleTextBrush}" FontSize="12"
-                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                </Grid>
             </DockPanel>
-        </Border>
+
+            <!-- Tier 2: Compact Single-Row Mix Strip + On-Demand Align/Channel Toggle -->
+            <DockPanel Margin="0,8,0,0" LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="人声" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource VocalBrush}" Margin="0,0,6,0" />
+                    <Slider x:Name="VocalGain" Width="104" MinWidth="84" Minimum="-24" Maximum="18" TickFrequency="1"
+                            IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                            ValueChanged="OnGainChanged" Thumb.DragStarted="OnSliderDragStarted" />
+                    <TextBlock x:Name="VocalGainText" Width="38" VerticalAlignment="Center" TextAlignment="Right"
+                               FontFamily="Consolas" FontSize="11.5" Foreground="{StaticResource SubtleTextBrush}" />
+
+                    <Rectangle Width="1" Height="14" Fill="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="12,0" />
+
+                    <TextBlock Text="伴奏" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource BackingBrush}" Margin="0,0,6,0" />
+                    <Slider x:Name="BackingGain" Width="104" MinWidth="84" Minimum="-30" Maximum="12" TickFrequency="1"
+                            IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                            ValueChanged="OnGainChanged" Thumb.DragStarted="OnSliderDragStarted" />
+                    <TextBlock x:Name="BackingGainText" Width="38" VerticalAlignment="Center" TextAlignment="Right"
+                               FontFamily="Consolas" FontSize="11.5" Foreground="{StaticResource SubtleTextBrush}" />
+                    <ToggleButton x:Name="BackingMute" Style="{StaticResource TopToggleButton}" Width="28" Height="26"
+                                  Margin="4,0,0,0" Click="OnMuteChanged" ToolTip="静音伴奏">
+                        <Path x:Name="BackingMuteGlyph"
+                              Data="M2,6 H5 L9,2.5 V13.5 L5,10 H2 Z M11.2,5.3 A3.5,3.5 0 0 1 11.2,10.7"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                              StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="15" Height="16" />
+                    </ToggleButton>
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="SuggestButton" Style="{StaticResource GhostToolButton}" Click="OnTrySuggestion"
+                            Margin="0,0,6,0" Visibility="Collapsed"
+                            ToolTip="检测到的候选延迟，点一下试听，不对按 Ctrl+Z 撤销" />
+                    <ToggleButton x:Name="TuneToggle" Style="{StaticResource SubtlePillToggle}" Click="OnToggleTune"
+                                  ToolTip="人声对齐与麦克风通道微调（键盘 ← → ±10ms，Shift ±50ms）">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="TuneSummaryText" Text="✓ 0ms" FontFamily="Consolas" FontSize="11.5"
+                                       VerticalAlignment="Center" />
+                            <Path x:Name="TuneChevron" Data="M1,1.5 L4,4.5 L7,1.5"
+                                  Stroke="{StaticResource SubtleTextBrush}" StrokeThickness="1.3"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Width="8" Height="6" VerticalAlignment="Center" Margin="6,1,0,0" />
+                        </StackPanel>
+                    </ToggleButton>
+                </StackPanel>
+            </DockPanel>
+
+            <!-- Tier 2b: Collapsible Alignment & Mic Channel Drawer (hidden by default since auto-align works great) -->
+            <Border x:Name="TuneDrawer" Visibility="Collapsed" Margin="0,6,0,0" Padding="10,7" CornerRadius="6"
+                    Background="#10FFFFFF" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1">
+                <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"
+                                ToolTip="人声偏移：键盘 ← → ±10ms，Shift ±50ms">
+                        <Button Content="−50" Click="OnNudge" Tag="-50" Style="{StaticResource GhostToolButton}" Padding="7,0" />
+                        <Button Content="−10" Click="OnNudge" Tag="-10" Style="{StaticResource GhostToolButton}" Padding="7,0" Margin="3,0" />
+                        <TextBlock x:Name="OffsetText" Width="62" TextAlignment="Center" VerticalAlignment="Center" FontSize="13"
+                                   FontFamily="Consolas" Text="0 ms" />
+                        <Button Content="+10" Click="OnNudge" Tag="10" Style="{StaticResource GhostToolButton}" Padding="7,0" Margin="3,0" />
+                        <Button Content="+50" Click="OnNudge" Tag="50" Style="{StaticResource GhostToolButton}" Padding="7,0" />
+                        <Button Content="重新对齐" Click="OnAutoAlign" Style="{StaticResource GhostToolButton}" Margin="8,0,0,0"
+                                ToolTip="重新执行自动对齐" />
+                        <TextBlock x:Name="AlignBadge" VerticalAlignment="Center" Margin="10,0,0,0" FontSize="11.5"
+                                   Foreground="{StaticResource SubtleTextBrush}" />
+                    </StackPanel>
+
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="输入通道" VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{StaticResource SubtleTextBrush}" Margin="0,0,6,0" />
+                        <ComboBox x:Name="ChannelBox" MinWidth="104" Height="28" Padding="8,0,22,0"
+                                  VerticalContentAlignment="Center" FontSize="12" SelectionChanged="OnChannelChanged" ToolTip="麦克风输入通道">
+                            <ComboBoxItem Content="通道 1 (左)" />
+                            <ComboBoxItem Content="通道 2 (右)" />
+                            <ComboBoxItem Content="1+2 混合" />
+                        </ComboBox>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Tier 3: Clean Export Action Bar -->
+            <Border Margin="0,8,0,0" Padding="10,7" CornerRadius="6" BorderThickness="1"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" Background="#08FFFFFF">
+                <DockPanel>
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                        <ComboBox x:Name="ExportKindBox" MinWidth="126" Height="30" Padding="10,0,28,0"
+                                  VerticalContentAlignment="Center" FontSize="12" ToolTip="导出格式">
+                            <ComboBoxItem Content="MP4 视频" />
+                            <ComboBoxItem Content="混音 MP3" />
+                            <ComboBoxItem Content="干声 MP3" />
+                        </ComboBox>
+                        <Button x:Name="ExportButton" Content="导出" Click="OnExport" ToolTip="导出 (Ctrl+E)"
+                                Style="{StaticResource AccentButtonStyle}" Height="30" Padding="16,0" Margin="8,0,0,0" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                        <Button x:Name="RevealButton" Content="打开位置" Style="{StaticResource GhostToolButton}" Click="OnReveal" IsEnabled="False" />
+                        <Button x:Name="CopyButton" Content="复制文件" Style="{StaticResource GhostToolButton}" Click="OnCopyFile" IsEnabled="False"
+                                Margin="6,0,0,0" ToolTip="复制后直接 Ctrl+V 粘贴到微信" />
+                    </StackPanel>
+                    <Grid Margin="12,0" VerticalAlignment="Center">
+                        <ProgressBar x:Name="ExportProgress" Height="4" Minimum="0" Maximum="1" Visibility="Collapsed" VerticalAlignment="Bottom" />
+                        <TextBlock x:Name="ExportText" Foreground="{StaticResource SubtleTextBrush}" FontSize="12"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </Grid>
+                </DockPanel>
+            </Border>
+        </StackPanel>
     </Grid>
 </UserControl>
