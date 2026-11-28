@@ -55,8 +55,27 @@ public sealed class TimelineControl : FrameworkElement
     private static readonly Brush TextBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xA8, 0xAD, 0xB5)));
     private static readonly Brush OutBrush = Frozen(new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)));
     private static readonly Pen VocalPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x3B, 0xA8, 0xF5))), 1));
+    private static readonly Pen VocalDimPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x4A, 0x3B, 0xA8, 0xF5))), 1));
     private static readonly Pen BackPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x9B, 0x7B, 0xF0))), 1));
+    private static readonly Pen PitchGridPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x2A, 0xFF, 0xFF, 0xFF))), 0.75));
+    private static readonly Pen PitchInTunePen = MakeRoundPen(Color.FromRgb(0x3E, 0xCF, 0x8E), 1.8);
+    private static readonly Pen PitchNearPen = MakeRoundPen(Color.FromRgb(0xF5, 0xB7, 0x3B), 1.8);
+    private static readonly Pen PitchOffPen = MakeRoundPen(Color.FromRgb(0xF0, 0x64, 0x69), 1.8);
+    private static readonly Brush PitchInTuneBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x3E, 0xCF, 0x8E)));
+    private static readonly Brush PitchNearBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xF5, 0xB7, 0x3B)));
+    private static readonly Brush PitchOffBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xF0, 0x64, 0x69)));
+    private static readonly Typeface MonoSemiBold = new(new FontFamily("Consolas"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
     private static readonly Pen TickPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x55, 0x59, 0x60))), 1));
+
+    private static Pen MakeRoundPen(Color c, double w)
+    {
+        var p = new Pen(Frozen(new SolidColorBrush(c)), w)
+        {
+            StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round,
+        };
+        p.Freeze();
+        return p;
+    }
     private static readonly Pen HandlePen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07))), 2));
     private static readonly Brush HandleBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07)));
     private static readonly Pen PlayheadPen = Frozen(new Pen(Brushes.White, 1.5));
@@ -82,6 +101,8 @@ public sealed class TimelineControl : FrameworkElement
 
     private SessionInfo? _s;
     private Peaks? _vocal, _backing;
+    private VocalPitchTrack? _pitch;
+    private bool _showPitchOverlay;
     private double _viewStart, _viewEnd = 1;
     private double _playhead;
     private DrawingGroup? _cache;
@@ -124,6 +145,14 @@ public sealed class TimelineControl : FrameworkElement
     }
 
     public void SetVocalPeaks(Peaks vocal) { _vocal = vocal; Refresh(); }
+
+    public void SetVocalPitch(VocalPitchTrack? pitch) { _pitch = pitch; Refresh(); }
+
+    public bool ShowPitchOverlay
+    {
+        get => _showPitchOverlay;
+        set { if (_showPitchOverlay != value) { _showPitchOverlay = value; Refresh(); } }
+    }
 
     public double Playhead
     {
@@ -180,6 +209,85 @@ public sealed class TimelineControl : FrameworkElement
         // Playhead
         double px = X(_playhead);
         if (px >= 0 && px <= w) dc.DrawLine(PlayheadPen, new Point(px, 0), new Point(px, h));
+
+        // Live pitch readout badge & playhead dot when pitch overlay is active
+        if (_showPitchOverlay && _pitch != null && _pitch.Count > 0)
+        {
+            var reading = _pitch.ReadingAtTimeline(_playhead, _s.VocalPlacement);
+            if (reading.IsVoiced)
+            {
+                double laneH = (h - RulerH) / 2;
+                var vocalLane = new Rect(0, RulerH, w, laneH - 1);
+                var (minM, maxM) = PitchRange();
+                double py = MidiToLaneY(reading.MidiNote, minM, maxM, vocalLane);
+                var brush = reading.Zone switch
+                {
+                    PitchZone.InTune => PitchInTuneBrush,
+                    PitchZone.SlightlyOff => PitchNearBrush,
+                    _ => PitchOffBrush,
+                };
+                if (px >= 0 && px <= w && py >= vocalLane.Top && py <= vocalLane.Bottom)
+                {
+                    dc.DrawEllipse(brush, null, new Point(px, py), 4.0, 4.0);
+                    dc.DrawEllipse(Brushes.White, null, new Point(px, py), 1.6, 1.6);
+                }
+                double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+                var ft = new FormattedText($"{reading.NoteName} {reading.CentsText}", CultureInfo.InvariantCulture,
+                    FlowDirection.LeftToRight, MonoSemiBold, 11, brush, dpi);
+                DrawLaneLabel(dc, ft, new Point(Math.Max(46, w - ft.Width - 10), RulerH + 3));
+            }
+        }
+    }
+
+    private (double Min, double Max) PitchRange()
+    {
+        if (_pitch == null) return (54, 74);
+        return (_pitch.MinMidi - 1.5, _pitch.MaxMidi + 1.5);
+    }
+
+    private static double MidiToLaneY(double midi, double minM, double maxM, Rect lane)
+    {
+        double pad = 5;
+        double usable = Math.Max(10, lane.Height - pad * 2);
+        double frac = (midi - minM) / Math.Max(1.0, maxM - minM);
+        return lane.Bottom - pad - Math.Clamp(frac, 0, 1) * usable;
+    }
+
+    private void DrawPitchOverlay(DrawingContext dc, VocalPitchTrack pitch, double placement, Rect lane, double w, double dpi)
+    {
+        var (minM, maxM) = PitchRange();
+        // Subtle C-note reference grid lines inside the vocal lane
+        int cStart = (int)Math.Ceiling(minM / 12.0) * 12;
+        for (int c = cStart; c <= maxM; c += 12)
+        {
+            double y = MidiToLaneY(c, minM, maxM, lane);
+            dc.DrawLine(PitchGridPen, new Point(0, y), new Point(w, y));
+            var lbl = new FormattedText(PitchMath.MidiToNoteName(c), CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight, MonoSemiBold, 9.5, TextBrush, dpi);
+            if (y - lbl.Height * 0.5 > lane.Top + 16 && y + lbl.Height * 0.5 < lane.Bottom - 2)
+                dc.DrawText(lbl, new Point(w - lbl.Width - 6, y - lbl.Height * 0.5));
+        }
+
+        double step = pitch.StepSeconds;
+        int i0 = Math.Max(1, (int)Math.Floor((_viewStart - placement) / step));
+        int i1 = Math.Min(pitch.Count - 1, (int)Math.Ceiling((_viewEnd - placement) / step));
+        // Decimate step slightly when zoomed way out (e.g. 5-min full view) so drawing stays instant & crisp.
+        int stride = Math.Max(1, (int)Math.Floor((SecPerPx * 1.5) / step));
+
+        for (int i = i0; i <= i1; i += stride)
+        {
+            int prev = i - stride;
+            if (prev < 0) continue;
+            float m0 = pitch.Midi[prev], m1 = pitch.Midi[i];
+            if (m0 <= 0 || m1 <= 0 || Math.Abs(m1 - m0) > 7f) continue;
+
+            double x0 = X(prev * step + placement), x1 = X(i * step + placement);
+            if (x1 < 0 || x0 > w) continue;
+            double y0 = MidiToLaneY(m0, minM, maxM, lane), y1 = MidiToLaneY(m1, minM, maxM, lane);
+            double cents = (m1 - Math.Round(m1)) * 100.0;
+            var pen = Math.Abs(cents) <= 12 ? PitchInTunePen : Math.Abs(cents) <= 28 ? PitchNearPen : PitchOffPen;
+            dc.DrawLine(pen, new Point(x0, y0), new Point(x1, y1));
+        }
     }
 
     private DrawingGroup BuildCache(double w, double h)
@@ -196,10 +304,11 @@ public sealed class TimelineControl : FrameworkElement
             dc.DrawRectangle(LaneBrush, null, backLane);
             DrawRuler(dc, w);
 
-            if (_vocal != null) DrawWave(dc, _vocal, s.VocalPlacement, vocalLane, VocalPen, w);
-            if (_backing != null) DrawWave(dc, _backing, s.BackingPlacement, backLane, BackPen, w);
-
             double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+            bool showPitch = _showPitchOverlay && _pitch != null && _pitch.Count > 0;
+            if (_vocal != null) DrawWave(dc, _vocal, s.VocalPlacement, vocalLane, showPitch ? VocalDimPen : VocalPen, w);
+            if (showPitch) DrawPitchOverlay(dc, _pitch!, s.VocalPlacement, vocalLane, w, dpi);
+            if (_backing != null) DrawWave(dc, _backing, s.BackingPlacement, backLane, BackPen, w);
 
             // Deleted sections: hatched red over both lanes, with a label when wide enough.
             foreach (var c in s.Edit.Cuts)

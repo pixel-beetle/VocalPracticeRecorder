@@ -16,12 +16,17 @@ using VocalPracticeRecorder.Views;
 
 namespace VocalPracticeRecorder;
 
+public sealed record GroupHeader(string Key, string Title, string SpanBadge);
+
 public sealed class TakeItem
 {
     public required SessionInfo Session { get; init; }
-    public required string Group { get; init; }
+    public required GroupHeader Group { get; init; }
     public required int TakeNumber { get; init; }
-    public string Header => $"Take {TakeNumber} · {Session.CreatedAt:MM/dd HH:mm}";
+    public bool MultiYear { get; init; }
+    public string Header => MultiYear
+        ? $"Take {TakeNumber} · {Session.CreatedAt:yy/MM/dd HH:mm}"
+        : $"Take {TakeNumber} · {Session.CreatedAt:MM/dd HH:mm}";
     public string StarMark => Session.Starred ? " ★" : "";
     public string TagLine => string.Join(" · ", Library.Tags(Session));
     public BitmapImage? Thumbnail
@@ -630,6 +635,7 @@ public partial class MainWindow : Window
         SettingsButton.IsEnabled = !recording;
         PinToggle.IsEnabled = !recording;
         TakesList.IsEnabled = !recording;
+        CleanupButton.IsEnabled = !recording;
         PitchSplitter.IsEnabled = !recording;
     }
 
@@ -707,6 +713,50 @@ public partial class MainWindow : Window
     // ---------------- Library & Editor ----------------
 
     private SessionAudio? _preloaded;
+    private string _libraryQuery = "";
+    private bool _starFilterOnly;
+
+    private void OnLibraryFilterChanged(object sender, TextChangedEventArgs e)
+    {
+        _libraryQuery = LibrarySearchBox.Text.Trim();
+        bool hasText = _libraryQuery.Length > 0;
+        LibrarySearchPlaceholder.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
+        ClearSearchButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
+        RefreshLibrary();
+    }
+
+    private void OnClearLibrarySearch(object sender, RoutedEventArgs e)
+    {
+        LibrarySearchBox.Text = "";
+        LibrarySearchBox.Focus();
+    }
+
+    private void OnStarFilterClick(object sender, RoutedEventArgs e)
+    {
+        _starFilterOnly = StarFilterToggle.IsChecked == true;
+        StarFilterToggle.Foreground = _starFilterOnly
+            ? new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07))
+            : (Brush)FindResource("TextFillColorPrimaryBrush");
+        RefreshLibrary();
+    }
+
+    private void OnCleanupLibrary(object sender, RoutedEventArgs e)
+    {
+        if (_controller.IsRecording) return;
+        bool prevTopmost = Topmost;
+        Topmost = false;
+        CleanupWindow dlg;
+        try
+        {
+            dlg = new CleanupWindow(_settings.RecordingsDir, _editor?.Session.Id) { Owner = this };
+            dlg.ShowDialog();
+        }
+        finally
+        {
+            Topmost = IsEditorOpen ? prevTopmost : _settings.TopmostInCapture;
+        }
+        if (dlg.Cleaned) RefreshLibrary();
+    }
 
     private void RefreshLibrary(string? select = null, SessionAudio? preloaded = null)
     {
@@ -718,18 +768,28 @@ public partial class MainWindow : Window
             if (i >= 0) sessions[i] = _editor.Session;
         }
         var groups = Library.Group(sessions);
+        bool hasFilter = _libraryQuery.Length > 0 || _starFilterOnly;
+
         _suppressSelection = true;
         _takes.Clear();
         TakeItem? toSelect = null;
         foreach (var g in groups)
         {
+            if (_libraryQuery.Length > 0 && !g.Title.Contains(_libraryQuery, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            bool multiYear = g.Takes.Count > 1 && g.EarliestAt.Year != g.LatestAt.Year;
+            var header = new GroupHeader(g.Key, g.Title, g.SpanBadge);
             for (int i = 0; i < g.Takes.Count; i++)
             {
-                var item = new TakeItem { Session = g.Takes[i], Group = g.Title, TakeNumber = i + 1 };
+                var take = g.Takes[i];
+                if (_starFilterOnly && !take.Starred) continue;
+                var item = new TakeItem { Session = take, Group = header, TakeNumber = i + 1, MultiYear = multiYear };
                 _takes.Add(item);
                 if (item.Session.Id == keep) toSelect = item;
             }
         }
+        EmptyHint.Text = hasFilter && sessions.Count > 0 ? "没有匹配的录音" : "暂无录音";
         EmptyHint.Visibility = _takes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         _suppressSelection = false;
 
@@ -854,7 +914,7 @@ public partial class MainWindow : Window
         if (item == null) return;
         int idx = _takes.IndexOf(item);
         _suppressSelection = true;
-        var replacement = new TakeItem { Session = s, Group = item.Group, TakeNumber = item.TakeNumber };
+        var replacement = new TakeItem { Session = s, Group = item.Group, TakeNumber = item.TakeNumber, MultiYear = item.MultiYear };
         _takes[idx] = replacement;
         TakesList.SelectedItem = replacement;
         _suppressSelection = false;
@@ -884,7 +944,7 @@ public partial class MainWindow : Window
     private void OnRename(object sender, RoutedEventArgs e)
     {
         if (ContextItem is not { } item) return;
-        var group = _takes.Where(t => t.Group == item.Group).Select(t => t.Session).ToList();
+        var group = _takes.Where(t => t.Group.Key == item.Group.Key).Select(t => t.Session).ToList();
         var dlg = new RenameDialog(item.Session.SongTitle, group.Count) { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Value)) return;
         foreach (var s in dlg.ApplyToGroup ? group : [item.Session])

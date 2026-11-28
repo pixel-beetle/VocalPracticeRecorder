@@ -21,6 +21,9 @@ public sealed class PlaybackEngine : ISampleProvider, IDisposable
     private long _pos;          // timeline sample being rendered next
     private volatile bool _playing;
     private long _endSample;
+    private volatile float[]? _polishedStereo;
+    private MicChannel _polishedChannel;
+    private readonly object _polishLock = new();
 
     public WaveFormat WaveFormat { get; } = WaveFormat.CreateIeeeFloatWaveFormat(Rate, 2);
     public bool IsPlaying => _playing;
@@ -31,6 +34,7 @@ public sealed class PlaybackEngine : ISampleProvider, IDisposable
     {
         _s = s;
         _audio = audio;
+        if (s.Edit.VocalPolish) PreparePolishAsync(s.Edit.MicChannel);
         try
         {
             using var en = new MMDeviceEnumerator();
@@ -75,6 +79,22 @@ public sealed class PlaybackEngine : ISampleProvider, IDisposable
         Seek(heard);
     }
 
+    /// <summary>Pre-renders the polished stereo vocal off the audio thread so preview matches export bit-for-bit with zero seek clicks.</summary>
+    public void PreparePolishAsync(MicChannel ch)
+    {
+        if (_polishedStereo != null && _polishedChannel == ch) return;
+        _ = Task.Run(() =>
+        {
+            var mono = _audio.MicMono(ch);
+            var processed = VocalPolish.ProcessStereo(mono, Rate);
+            lock (_polishLock)
+            {
+                _polishedChannel = ch;
+                _polishedStereo = processed;
+            }
+        });
+    }
+
     public int Read(Span<float> buffer)
     {
         int count = buffer.Length;
@@ -88,6 +108,8 @@ public sealed class PlaybackEngine : ISampleProvider, IDisposable
         float vg = (float)Math.Pow(10, e.VocalGainDb / 20);
         float bg = e.BackingMuted ? 0f : (float)Math.Pow(10, e.BackingGainDb / 20);
         var vocal = _audio.MicMono(e.MicChannel);
+        float[]? polished = e.VocalPolish && _polishedChannel == e.MicChannel ? _polishedStereo : null;
+        if (e.VocalPolish && polished == null) PreparePolishAsync(e.MicChannel);
         var back = _audio.BackingStereo;
         long vOff = (long)Math.Round(_s.VocalPlacement * Rate);
         long bOff = (long)Math.Round(_s.BackingPlacement * Rate);
@@ -126,17 +148,28 @@ public sealed class PlaybackEngine : ISampleProvider, IDisposable
                 break;
             }
             pos++;
-            float v = 0, l = 0, r = 0;
+            float vl = 0, vr = 0, l = 0, r = 0;
             long vi = t - vOff;
-            if (vi >= 0 && vi < vocal.Length) v = vocal[vi] * vg;
+            if (polished != null)
+            {
+                if (vi >= 0 && vi * 2 + 1 < polished.Length)
+                {
+                    vl = polished[vi * 2] * vg;
+                    vr = polished[vi * 2 + 1] * vg;
+                }
+            }
+            else if (vi >= 0 && vi < vocal.Length)
+            {
+                vl = vr = vocal[vi] * vg;
+            }
             long bi = t - bOff;
             if (bi >= 0 && bi < backFrames)
             {
                 l = back[bi * 2] * bg;
                 r = back[bi * 2 + 1] * bg;
             }
-            buffer[i * 2] = Math.Clamp(v + l, -1f, 1f);
-            buffer[i * 2 + 1] = Math.Clamp(v + r, -1f, 1f);
+            buffer[i * 2] = Math.Clamp(vl + l, -1f, 1f);
+            buffer[i * 2 + 1] = Math.Clamp(vr + r, -1f, 1f);
         }
         Interlocked.Exchange(ref _pos, pos);
         if (ended)

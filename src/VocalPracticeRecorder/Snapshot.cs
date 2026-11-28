@@ -197,7 +197,7 @@ internal static class Snapshot
         Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "2-capture-narrow-660.png"));
         Crop(RenderOverChecker(rootEl, 2), rootEl, topBar, Path.Combine(outDir, "4c-topbar-narrow-2x.png"));
 
-        // State 3: Capture Mode with sidebar AND pitch drawer both expanded.
+        // State 3: Capture Mode with sidebar AND pitch drawer both expanded (+ 2x sidebar header check).
         win.Width = 1060; win.Height = 680;
         win.SetSidebar(true, save: false);
         win.RefreshPitchUiForSnapshot();
@@ -205,6 +205,8 @@ internal static class Snapshot
         AssertCaptureTransparency(win, "capture-sidebar-pitch-open");
         AssertPitchPanelInvariants(win, "capture-sidebar-pitch-open");
         Save(RenderOverChecker(rootEl, 1), Path.Combine(outDir, "3-capture-sidebar-open.png"));
+        var sidebarPanel = (FrameworkElement)win.FindName("SidebarPanel");
+        Crop(RenderOverChecker(rootEl, 2), rootEl, sidebarPanel, Path.Combine(outDir, "15-sidebar-2x.png"));
 
         // State 4: Editor Mode (must be 100% solid AND MediaElement must render actual video pixels!).
         var list = (ListBox)win.FindName("TakesList");
@@ -245,10 +247,21 @@ internal static class Snapshot
                 var controls = (FrameworkElement)ed.FindName("ControlsPanel");
                 Crop(full, rootEl, controls, Path.Combine(outDir, "11-mix-controls-2x.png"));
 
-                // Also inspect expanded alignment & mic-channel drawer at 2x magnification.
+                // Also inspect Pitch Overlay on Editor timeline + expanded TuneDrawer at 2x magnification.
+                var demoMidis = new float[(int)(ed.Session.Duration / 0.02) + 1];
+                for (int i = 0; i < demoMidis.Length; i++)
+                {
+                    double t = i * 0.02;
+                    if (t % 8.0 < 1.2) demoMidis[i] = 0;
+                    else demoMidis[i] = (float)(64.0 + 4.0 * Math.Sin(t * 0.6) + 0.16 * Math.Sin(t * 32.0));
+                }
+                ed.SetPitchTrackForSnapshot(new VocalPitchTrack { Midi = demoMidis, MinMidi = 58, MaxMidi = 70, Channel = ed.Session.Edit.MicChannel });
+                ed.SetPitchOverlay(true, save: false);
                 ed.SetTuneDrawerOpen(true);
-                await Task.Delay(150);
+                await Task.Delay(200);
                 var fullExpanded = RenderTrueAlpha(rootEl, 2);
+                Save(RenderTrueAlpha(rootEl, 1), Path.Combine(outDir, "6b-editor-pitch-overlay.png"));
+                Crop(fullExpanded, rootEl, tl, Path.Combine(outDir, "16-timeline-pitch-2x.png"));
                 Crop(fullExpanded, rootEl, controls, Path.Combine(outDir, "11b-mix-tune-open-2x.png"));
             }
         }
@@ -265,6 +278,28 @@ internal static class Snapshot
         await Task.Delay(150);
         Save(RenderOverSolid((FrameworkElement)sw.Content, 2), Path.Combine(outDir, "13-settings-confirm-2x.png"));
         sw.Close();
+
+        // State 6: PhoneShare QR dialog + Library Cleanup dialog at 2x magnification.
+        var dummyExport = Path.Combine(outDir, "アイドル Take2 1128-2120 视频.mp4");
+        File.WriteAllBytes(dummyExport, new byte[4096]);
+        var pw = new PhoneShareWindow(dummyExport)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -30000, Top = -30000, ShowActivated = false,
+        };
+        pw.Show();
+        await Task.Delay(250);
+        Save(RenderOverSolid((FrameworkElement)pw.Content, 2), Path.Combine(outDir, "17-phone-share-2x.png"));
+        pw.Close();
+        File.Delete(dummyExport);
+
+        var cw = new CleanupWindow(settings.RecordingsDir, null)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -30000, Top = -30000, ShowActivated = false,
+        };
+        cw.Show();
+        await Task.Delay(250);
+        Save(RenderOverSolid((FrameworkElement)cw.Content, 2), Path.Combine(outDir, "18-cleanup-dialog-2x.png"));
+        cw.Close();
 
         win.Close();
         return 0;

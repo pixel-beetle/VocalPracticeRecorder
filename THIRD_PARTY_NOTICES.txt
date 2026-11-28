@@ -23,3 +23,6 @@ Release packages bundle or depend on the following third-party open-source compo
 
 4. .NET Runtime & WPF (https://github.com/dotnet/runtime, https://github.com/dotnet/wpf)
    - License: MIT License
+
+5. QRCoder (https://github.com/codebude/QRCoder)
+   - License: MIT License

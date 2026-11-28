@@ -63,11 +63,16 @@ public static class Ffmpeg
 
     /// <summary>
     /// Runs ffmpeg to completion. When the args contain "-progress pipe:1", <paramref name="progress"/>
-    /// receives processed seconds.
+    /// receives processed seconds. When <paramref name="writeStdin"/> is supplied, feeds stdin concurrently
+    /// and closes it once finished.
     /// </summary>
-    public static async Task RunAsync(IEnumerable<string> args, Action<double>? progress = null, CancellationToken ct = default)
+    public static async Task RunAsync(
+        IEnumerable<string> args,
+        Action<double>? progress = null,
+        CancellationToken ct = default,
+        Func<Stream, CancellationToken, Task>? writeStdin = null)
     {
-        using var p = new Process { StartInfo = StartInfo(args) };
+        using var p = new Process { StartInfo = StartInfo(args, redirectStdin: writeStdin != null) };
         var err = new StringBuilder();
         p.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (err) { err.AppendLine(e.Data); if (err.Length > 20000) err.Remove(0, 10000); } };
         p.OutputDataReceived += (_, e) =>
@@ -83,8 +88,28 @@ public static class Ffmpeg
         p.Start();
         p.BeginErrorReadLine();
         p.BeginOutputReadLine();
+
+        Task? feedTask = null;
+        if (writeStdin != null)
+        {
+            feedTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await writeStdin(p.StandardInput.BaseStream, ct).ConfigureAwait(false);
+                    await p.StandardInput.BaseStream.FlushAsync(ct).ConfigureAwait(false);
+                }
+                catch (IOException) { /* ffmpeg exited early; process exit code reports the real error */ }
+                finally
+                {
+                    try { p.StandardInput.Close(); } catch { }
+                }
+            }, CancellationToken.None);
+        }
+
         using (ct.Register(() => { try { p.Kill(true); } catch { } }))
         {
+            if (feedTask != null) await feedTask.ConfigureAwait(false);
             await p.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
         }
         ct.ThrowIfCancellationRequested();

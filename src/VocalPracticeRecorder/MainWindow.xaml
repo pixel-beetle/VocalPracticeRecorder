@@ -193,19 +193,55 @@
                 <!-- Collapsible Sidebar -->
                 <Border x:Name="SidebarPanel" Grid.Column="0" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" Visibility="Collapsed">
                     <Grid>
-                        <TextBlock x:Name="EmptyHint" Text="暂无录音" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Compact Search + Star Filter + Cleanup bar -->
+                        <Grid Grid.Row="0" Margin="6,6,6,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Grid.Column="0">
+                                <TextBox x:Name="LibrarySearchBox" Height="28" FontSize="12" Padding="8,0,22,0"
+                                         VerticalContentAlignment="Center" TextChanged="OnLibraryFilterChanged"
+                                         ToolTip="按曲名搜索录音库" />
+                                <TextBlock x:Name="LibrarySearchPlaceholder" Text="搜索曲名…" FontSize="12"
+                                           Foreground="{StaticResource SubtleTextBrush}" VerticalAlignment="Center"
+                                           Margin="10,0,0,0" IsHitTestVisible="False" />
+                                <Button x:Name="ClearSearchButton" Content="×" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        Width="22" Height="22" Margin="0,0,2,0" Padding="0" FontSize="13"
+                                        Style="{StaticResource TopIconButton}" Visibility="Collapsed"
+                                        Click="OnClearLibrarySearch" ToolTip="清空搜索" />
+                            </Grid>
+                            <ToggleButton x:Name="StarFilterToggle" Grid.Column="1" Style="{StaticResource TopToggleButton}"
+                                          Width="28" Height="28" Margin="4,0,0,0" Content="★" FontSize="13"
+                                          Click="OnStarFilterClick" ToolTip="只看标星最佳" />
+                            <Button x:Name="CleanupButton" Grid.Column="2" Style="{StaticResource TopIconButton}"
+                                    Width="28" Height="28" Margin="2,0,0,0" Click="OnCleanupLibrary" ToolTip="清理未标星的旧录音…">
+                                <Path Data="M3,4.5 H13 M5.5,4.5 V3 H10.5 V4.5 M4.5,4.5 L5.2,13.2 H10.8 L11.5,4.5 M6.8,7 V11 M9.2,7 V11"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Width="16" Height="16" />
+                            </Button>
+                        </Grid>
+
+                        <TextBlock x:Name="EmptyHint" Grid.Row="1" Text="暂无录音" HorizontalAlignment="Center" VerticalAlignment="Center"
                                    Foreground="{StaticResource SubtleTextBrush}" Visibility="Collapsed" />
-                        <ListBox x:Name="TakesList" ItemsSource="{Binding Source={StaticResource TakesView}}" BorderThickness="0"
-                                 Background="Transparent" SelectionChanged="OnTakeSelected" Margin="4,4,4,6"
+                        <ListBox x:Name="TakesList" Grid.Row="1" ItemsSource="{Binding Source={StaticResource TakesView}}" BorderThickness="0"
+                                 Background="Transparent" SelectionChanged="OnTakeSelected" Margin="4,2,4,6"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizingWhenGrouping="True">
                             <ListBox.GroupStyle>
                                 <GroupStyle>
                                     <GroupStyle.HeaderTemplate>
                                         <DataTemplate>
                                             <DockPanel Margin="8,10,8,3">
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount}" FontSize="11"
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Name.SpanBadge}" FontSize="11"
                                                            Foreground="{StaticResource SubtleTextBrush}" VerticalAlignment="Center" Margin="6,0,0,0" />
-                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Name.Title}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
                                             </DockPanel>
                                         </DataTemplate>
                                     </GroupStyle.HeaderTemplate>

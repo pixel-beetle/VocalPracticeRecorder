@@ -91,8 +91,10 @@
                     <Button x:Name="SuggestButton" Style="{StaticResource GhostToolButton}" Click="OnTrySuggestion"
                             Margin="0,0,6,0" Visibility="Collapsed"
                             ToolTip="检测到的候选延迟，点一下试听，不对按 Ctrl+Z 撤销" />
+                    <ToggleButton x:Name="PitchOverlayToggle" Style="{StaticResource SubtlePillToggle}" Click="OnTogglePitchOverlay"
+                                  Margin="0,0,6,0" Content="音高" ToolTip="在人声波形上叠加音高曲线" />
                     <ToggleButton x:Name="TuneToggle" Style="{StaticResource SubtlePillToggle}" Click="OnToggleTune"
-                                  ToolTip="人声对齐与麦克风通道微调（键盘 ← → ±10ms，Shift ±50ms）">
+                                  ToolTip="人声对齐、轻润色与麦克风通道微调（键盘 ← → ±10ms，Shift ±50ms）">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock x:Name="TuneSummaryText" Text="✓ 0ms" FontFamily="Consolas" FontSize="11.5"
                                        VerticalAlignment="Center" />
@@ -105,7 +107,7 @@
                 </StackPanel>
             </DockPanel>
 
-            <!-- Tier 2b: Collapsible Alignment & Mic Channel Drawer (hidden by default since auto-align works great) -->
+            <!-- Tier 2b: Collapsible Alignment, Light Polish & Mic Channel Drawer (hidden by default) -->
             <Border x:Name="TuneDrawer" Visibility="Collapsed" Margin="0,6,0,0" Padding="10,7" CornerRadius="6"
                     Background="#10FFFFFF" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1">
                 <DockPanel LastChildFill="False">
@@ -119,14 +121,17 @@
                         <Button Content="+50" Click="OnNudge" Tag="50" Style="{StaticResource GhostToolButton}" Padding="7,0" />
                         <Button Content="重新对齐" Click="OnAutoAlign" Style="{StaticResource GhostToolButton}" Margin="8,0,0,0"
                                 ToolTip="重新执行自动对齐" />
-                        <TextBlock x:Name="AlignBadge" VerticalAlignment="Center" Margin="10,0,0,0" FontSize="11.5"
+                        <TextBlock x:Name="AlignBadge" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11.5"
                                    Foreground="{StaticResource SubtleTextBrush}" />
                     </StackPanel>
 
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="输入通道" VerticalAlignment="Center" FontSize="12"
+                        <ToggleButton x:Name="PolishToggle" Style="{StaticResource SubtlePillToggle}" Click="OnTogglePolish"
+                                      Content="轻润色" Margin="0,0,10,0"
+                                      ToolTip="80Hz 去喷麦 + 轻度动态平滑 + 自然空间混响（默认关闭，试听与导出一致）" />
+                        <TextBlock Text="通道" VerticalAlignment="Center" FontSize="12"
                                    Foreground="{StaticResource SubtleTextBrush}" Margin="0,0,6,0" />
-                        <ComboBox x:Name="ChannelBox" MinWidth="104" Height="28" Padding="8,0,22,0"
+                        <ComboBox x:Name="ChannelBox" MinWidth="102" Height="28" Padding="8,0,22,0"
                                   VerticalContentAlignment="Center" FontSize="12" SelectionChanged="OnChannelChanged" ToolTip="麦克风输入通道">
                             <ComboBoxItem Content="通道 1 (左)" />
                             <ComboBoxItem Content="通道 2 (右)" />
@@ -142,11 +147,15 @@
                 <DockPanel>
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                         <ComboBox x:Name="ExportKindBox" MinWidth="126" Height="30" Padding="10,0,28,0"
-                                  VerticalContentAlignment="Center" FontSize="12" ToolTip="导出格式">
+                                  VerticalContentAlignment="Center" FontSize="12" ToolTip="导出格式"
+                                  SelectionChanged="OnExportKindChanged">
                             <ComboBoxItem Content="MP4 视频" />
                             <ComboBoxItem Content="混音 MP3" />
                             <ComboBoxItem Content="干声 MP3" />
                         </ComboBox>
+                        <CheckBox x:Name="BurnPitchCheck" Content="附音高线" VerticalAlignment="Center" Margin="8,0,0,0"
+                                  FontSize="12" Click="OnBurnPitchChanged"
+                                  ToolTip="导出 MP4 时在视频正下方拼接一条独立暗色音高曲线栏（不遮挡原画面歌词）" />
                         <Button x:Name="ExportButton" Content="导出" Click="OnExport" ToolTip="导出 (Ctrl+E)"
                                 Style="{StaticResource AccentButtonStyle}" Height="30" Padding="16,0" Margin="8,0,0,0" />
                     </StackPanel>
@@ -154,6 +163,8 @@
                         <Button x:Name="RevealButton" Content="打开位置" Style="{StaticResource GhostToolButton}" Click="OnReveal" IsEnabled="False" />
                         <Button x:Name="CopyButton" Content="复制文件" Style="{StaticResource GhostToolButton}" Click="OnCopyFile" IsEnabled="False"
                                 Margin="6,0,0,0" ToolTip="复制后直接 Ctrl+V 粘贴到微信" />
+                        <Button x:Name="SharePhoneButton" Content="传手机" Style="{StaticResource GhostToolButton}" Click="OnSharePhone" IsEnabled="False"
+                                Margin="6,0,0,0" ToolTip="生成局域网二维码，手机扫码直接下载视频" />
                     </StackPanel>
                     <Grid Margin="12,0" VerticalAlignment="Center">
                         <ProgressBar x:Name="ExportProgress" Height="4" Minimum="0" Maximum="1" Visibility="Collapsed" VerticalAlignment="Bottom" />

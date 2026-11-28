@@ -51,6 +51,8 @@ public sealed class EditState
     public double VocalGainDb { get; set; }
     public double BackingGainDb { get; set; } = -3;
     public bool BackingMuted { get; set; }
+    /// <summary>Optional light vocal polish (HPF + gentle compression + subtle natural reverb); off by default.</summary>
+    public bool VocalPolish { get; set; }
     public MicChannel MicChannel { get; set; } = MicChannel.Left;
     public AlignMode AlignMode { get; set; } = AlignMode.None;
     public double? AutoDelayMs { get; set; }

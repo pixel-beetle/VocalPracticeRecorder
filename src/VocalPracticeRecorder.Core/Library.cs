@@ -7,7 +7,21 @@ public sealed class SongGroup
     /// <summary>Takes in chronological order; Take number = index + 1.</summary>
     public List<SessionInfo> Takes { get; init; } = [];
     public DateTime LatestAt => Takes.Count == 0 ? DateTime.MinValue : Takes.Max(t => t.CreatedAt);
+    public DateTime EarliestAt => Takes.Count == 0 ? DateTime.MinValue : Takes.Min(t => t.CreatedAt);
     public int TakeNumberOf(SessionInfo s) => Takes.IndexOf(s) + 1;
+
+    /// <summary>Compact count + practice span text for the sidebar group header (e.g. "5 遍 · 跨 27 天").</summary>
+    public string SpanBadge
+    {
+        get
+        {
+            if (Takes.Count <= 1) return $"{Takes.Count}";
+            int days = (int)Math.Floor((LatestAt.Date - EarliestAt.Date).TotalDays);
+            if (days <= 0) return $"{Takes.Count}";
+            if (days >= 60) return $"{Takes.Count} · 跨 {days / 30} 个月";
+            return $"{Takes.Count} · 跨 {days} 天";
+        }
+    }
 }
 
 public static class Library

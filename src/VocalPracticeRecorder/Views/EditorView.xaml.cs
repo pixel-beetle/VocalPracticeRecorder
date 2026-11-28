@@ -27,6 +27,8 @@ public partial class EditorView : UserControl
     private long _lastJumps;
     private string? _lastExport;
     private CancellationTokenSource? _exportCts;
+    private CancellationTokenSource? _pitchCts;
+    private VocalPitchTrack? _pitchTrack;
 
     /// <summary>Raised after edit/split/export changes are saved, so the library can refresh.</summary>
     public event Action<SessionInfo, bool>? SessionChanged;
@@ -46,16 +48,22 @@ public partial class EditorView : UserControl
         VocalGain.Value = s.Edit.VocalGainDb;
         BackingGain.Value = s.Edit.BackingGainDb;
         BackingMute.IsChecked = s.Edit.BackingMuted;
+        PolishToggle.IsChecked = s.Edit.VocalPolish;
+        PitchOverlayToggle.IsChecked = settings.EditorPitchOverlay;
+        Timeline.ShowPitchOverlay = settings.EditorPitchOverlay;
+        BurnPitchCheck.IsChecked = settings.ExportBurnPitch;
         ExportKindBox.SelectedIndex = settings.LastExportKind switch
         {
             ExportKind.MixAudio => 1,
             ExportKind.DryVocal => 2,
             _ => 0,
         };
+        UpdateBurnPitchVisibility();
         var last = s.Exports.LastOrDefault();
         if (last != null && File.Exists(last.Path)) ShowExported(last.Path);
 
         Timeline.Load(s, new Peaks(audio.MicMono(s.Edit.MicChannel)), new Peaks(audio.BackingMono));
+        StartPitchAnalysis(s.Edit.MicChannel);
         Timeline.SeekRequested += Seek;
         Timeline.EditStarting += BeginEdit;
         Timeline.TrimChanged += MarkDirty;
@@ -172,8 +180,11 @@ public partial class EditorView : UserControl
         VocalGain.Value = _s.Edit.VocalGainDb;
         BackingGain.Value = _s.Edit.BackingGainDb;
         BackingMute.IsChecked = _s.Edit.BackingMuted;
+        PolishToggle.IsChecked = _s.Edit.VocalPolish;
+        if (_s.Edit.VocalPolish) _engine.PreparePolishAsync(_s.Edit.MicChannel);
         _loading = false;
         Timeline.SetVocalPeaks(new Peaks(_audio.MicMono(_s.Edit.MicChannel)));
+        StartPitchAnalysis(_s.Edit.MicChannel);
         MarkDirty();
     }
 
@@ -341,7 +352,86 @@ public partial class EditorView : UserControl
         BeginEdit();
         _s.Edit.MicChannel = (MicChannel)ChannelBox.SelectedIndex;
         Timeline.SetVocalPeaks(new Peaks(_audio.MicMono(_s.Edit.MicChannel)));
+        if (_s.Edit.VocalPolish) _engine.PreparePolishAsync(_s.Edit.MicChannel);
+        StartPitchAnalysis(_s.Edit.MicChannel);
         MarkDirty();
+    }
+
+    private void OnTogglePolish(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        BeginEdit();
+        _s.Edit.VocalPolish = PolishToggle.IsChecked == true;
+        if (_s.Edit.VocalPolish) _engine.PreparePolishAsync(_s.Edit.MicChannel);
+        MarkDirty();
+        Focus();
+    }
+
+    private void OnTogglePitchOverlay(object sender, RoutedEventArgs e)
+    {
+        SetPitchOverlay(PitchOverlayToggle.IsChecked == true, save: true);
+        Focus();
+    }
+
+    internal void SetPitchOverlay(bool open, bool save = true)
+    {
+        PitchOverlayToggle.IsChecked = open;
+        Timeline.ShowPitchOverlay = open;
+        if (save)
+        {
+            _settings.EditorPitchOverlay = open;
+            _settings.Save();
+        }
+    }
+
+    internal void SetPitchTrackForSnapshot(VocalPitchTrack track)
+    {
+        _pitchTrack = track;
+        Timeline.SetVocalPitch(track);
+    }
+
+    private void StartPitchAnalysis(MicChannel ch)
+    {
+        _pitchCts?.Cancel();
+        _pitchCts?.Dispose();
+        _pitchCts = new CancellationTokenSource();
+        var ct = _pitchCts.Token;
+        var mono = _audio.MicMono(ch);
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var track = VocalPitchTrack.LoadOrAnalyze(_s, mono, SessionAudio.Rate, ch, ct);
+                if (ct.IsCancellationRequested) return;
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (ct.IsCancellationRequested || _s.Edit.MicChannel != ch) return;
+                    _pitchTrack = track;
+                    Timeline.SetVocalPitch(track);
+                });
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { Log.Error("pitch-analyze", ex); }
+        }, ct);
+    }
+
+    private void OnExportKindChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading) return;
+        UpdateBurnPitchVisibility();
+    }
+
+    private void OnBurnPitchChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        _settings.ExportBurnPitch = BurnPitchCheck.IsChecked == true;
+        _settings.Save();
+    }
+
+    private void UpdateBurnPitchVisibility()
+    {
+        if (BurnPitchCheck == null) return;
+        BurnPitchCheck.Visibility = SelectedKind == ExportKind.MixVideo ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnToggleTune(object sender, RoutedEventArgs e)
@@ -390,7 +480,7 @@ public partial class EditorView : UserControl
         AlignBadge.Text = label;
         AlignBadge.ToolTip = string.IsNullOrEmpty(tip) ? null : tip;
         AlignBadge.Visibility = string.IsNullOrEmpty(label) ? Visibility.Collapsed : Visibility.Visible;
-        TuneSummaryText.Text = $"{prefix}{e.VocalOffsetMs:+0;−0;0}ms";
+        TuneSummaryText.Text = $"{prefix}{e.VocalOffsetMs:+0;−0;0}ms{(e.VocalPolish ? " · 润色" : "")}";
 
         bool suggest = !e.AutoReliable && e.AutoDelayMs is { } ad && Math.Abs(e.VocalOffsetMs + Math.Round(ad)) > 1 && Math.Abs(ad) >= 5;
         SuggestButton.Visibility = suggest ? Visibility.Visible : Visibility.Collapsed;
@@ -425,12 +515,60 @@ public partial class EditorView : UserControl
         ExportProgress.Value = 0;
         ExportText.Text = "导出中…";
         _exportCts = new CancellationTokenSource();
+        string? tempPolishWav = null;
         try
         {
-            var args = ExportBuilder.BuildArgs(_s, kind, path, _settings.Export);
+            var ct = _exportCts.Token;
+            if (_s.Edit.VocalPolish)
+            {
+                ExportText.Text = "人声润色中…";
+                tempPolishWav = Path.Combine(Path.GetTempPath(), $"vpr-polish-{Guid.NewGuid():N}.wav");
+                var mono = _audio.MicMono(_s.Edit.MicChannel);
+                await Task.Run(() =>
+                {
+                    if (kind == ExportKind.DryVocal)
+                        VocalPolish.WriteWavFloat32(tempPolishWav, VocalPolish.ProcessMono(mono, SessionAudio.Rate), SessionAudio.Rate, 1);
+                    else
+                        VocalPolish.WriteWavFloat32(tempPolishWav, VocalPolish.ProcessStereo(mono, SessionAudio.Rate), SessionAudio.Rate, 2);
+                }, ct);
+            }
+
+            PitchStripRenderer? stripRenderer = null;
+            PitchStripSpec? stripSpec = null;
+            if (kind == ExportKind.MixVideo && BurnPitchCheck.IsChecked == true)
+            {
+                ExportText.Text = "分析音高曲线…";
+                var track = _pitchTrack;
+                if (track == null || track.Channel != _s.Edit.MicChannel)
+                {
+                    var mono = _audio.MicMono(_s.Edit.MicChannel);
+                    track = await Task.Run(() => VocalPitchTrack.LoadOrAnalyze(_s, mono, SessionAudio.Rate, _s.Edit.MicChannel, ct), ct);
+                    _pitchTrack = track;
+                    Timeline.SetVocalPitch(track);
+                }
+                int vw = Math.Max(64, _s.Video.Width & ~1);
+                int vh = Math.Max(64, _s.Video.Height & ~1);
+                int stripH = PitchStripRenderer.StripHeightFor(vh);
+                stripRenderer = new PitchStripRenderer(_s, track, vw, stripH);
+                stripSpec = new PitchStripSpec(stripRenderer.Width, stripRenderer.Height, stripRenderer.Fps);
+            }
+
+            ExportText.Text = "导出中…";
+            var args = ExportBuilder.BuildArgs(_s, kind, path, _settings.Export, tempPolishWav, stripSpec);
             Log.Info("export: " + string.Join(" ", args));
+            Func<Stream, CancellationToken, Task>? feedStdin = stripRenderer == null
+                ? null
+                : async (stdin, token) =>
+                {
+                    for (int f = 0; f < stripRenderer.TotalFrames; f++)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var raw = stripRenderer.RenderFrame(f);
+                        await stdin.WriteAsync(raw, 0, raw.Length, token).ConfigureAwait(false);
+                    }
+                };
             await Task.Run(() => Ffmpeg.RunAsync(args,
-                sec => Dispatcher.BeginInvoke(() => ExportProgress.Value = Math.Clamp(sec / length, 0, 1)), _exportCts.Token));
+                sec => Dispatcher.BeginInvoke(() => ExportProgress.Value = Math.Clamp(sec / length, 0, 1)), ct, feedStdin));
             _s.Exports.Add(new ExportRecord { Path = path, Kind = kind, At = DateTime.Now });
             _s.Save();
             ShowExported(path);
@@ -444,6 +582,7 @@ public partial class EditorView : UserControl
         }
         finally
         {
+            if (tempPolishWav != null) try { File.Delete(tempPolishWav); } catch { }
             ExportButton.IsEnabled = true;
             ExportProgress.Visibility = Visibility.Collapsed;
             _exportCts.Dispose();
@@ -459,6 +598,7 @@ public partial class EditorView : UserControl
         ExportText.ToolTip = path;
         RevealButton.IsEnabled = true;
         CopyButton.IsEnabled = true;
+        SharePhoneButton.IsEnabled = true;
     }
 
     private void OnReveal(object sender, RoutedEventArgs e)
@@ -472,6 +612,28 @@ public partial class EditorView : UserControl
         if (_lastExport == null) return;
         Clipboard.SetFileDropList(new StringCollection { _lastExport });
         ExportText.Text = "✓ 已复制";
+    }
+
+    private void OnSharePhone(object sender, RoutedEventArgs e)
+    {
+        if (_lastExport == null || !File.Exists(_lastExport)) return;
+        var owner = Window.GetWindow(this);
+        bool prevTopmost = owner?.Topmost ?? false;
+        if (owner != null) owner.Topmost = false;
+        try
+        {
+            var dlg = new PhoneShareWindow(_lastExport) { Owner = owner };
+            dlg.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("phone-share", ex);
+            MessageBox.Show(owner, "无法启动局域网传输：" + ex.Message, "传手机失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            if (owner != null) owner.Topmost = prevTopmost;
+        }
     }
 
     // ---------- Keyboard ----------
@@ -503,6 +665,7 @@ public partial class EditorView : UserControl
         _uiTimer.Stop();
         if (_saveTimer.IsEnabled) SaveNow();
         _exportCts?.Cancel();
+        _pitchCts?.Cancel();
         _engine.Dispose();
         Video.Stop();
         Video.Close();

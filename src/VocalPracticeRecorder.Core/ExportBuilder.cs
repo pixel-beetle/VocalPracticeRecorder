@@ -21,6 +21,8 @@ public sealed class ExportSettings
     public double LimiterCeiling { get; set; } = 0.97;
 }
 
+public sealed record PitchStripSpec(int Width, int Height, int Fps);
+
 /// <summary>Builds the single FFmpeg invocation that renders an edited session.</summary>
 public static class ExportBuilder
 {
@@ -76,16 +78,29 @@ public static class ExportBuilder
     /// <summary>Fade applied at internal joins so deleting a section never clicks.</summary>
     public const double JoinFadeSeconds = 0.005;
 
-    /// <summary>Returns the full FFmpeg argument list (without the executable).</summary>
-    public static List<string> BuildArgs(SessionInfo s, ExportKind kind, string outputPath, ExportSettings? settings = null)
+    /// <summary>
+    /// Returns the full FFmpeg argument list (without the executable).
+    /// Optionally accepts a pre-processed vocal WAV (<paramref name="polishedVocalPath"/>) when VocalPolish is enabled,
+    /// and a raw BGRA pitch-strip pipe spec (<paramref name="pitchStrip"/>) stacked directly below the video via vstack.
+    /// </summary>
+    public static List<string> BuildArgs(
+        SessionInfo s,
+        ExportKind kind,
+        string outputPath,
+        ExportSettings? settings = null,
+        string? polishedVocalPath = null,
+        PitchStripSpec? pitchStrip = null)
     {
         settings ??= new ExportSettings();
         var e = s.Edit;
         var segs = EditTimeline.KeptSegments(s);
         if (segs.Count == 0 || segs.Sum(x => x.Length) < 0.1) throw new InvalidOperationException("剪辑后的长度太短。");
         int n = segs.Count;
+        bool hasPitchPipe = kind == ExportKind.MixVideo && pitchStrip != null;
 
-        var args = new List<string> { "-hide_banner", "-y", "-nostdin" };
+        var args = new List<string> { "-hide_banner", "-y" };
+        if (!hasPitchPipe) args.Add("-nostdin");
+
         int idx = 0;
         int videoIdx = -1;
         if (kind == ExportKind.MixVideo)
@@ -93,7 +108,8 @@ public static class ExportBuilder
             args.AddRange(["-i", s.PathOf(s.Video.File)]);
             videoIdx = idx++;
         }
-        args.AddRange(["-i", s.PathOf(s.Mic.File)]);
+        bool usePolishedFile = !string.IsNullOrEmpty(polishedVocalPath);
+        args.AddRange(["-i", usePolishedFile ? polishedVocalPath! : s.PathOf(s.Mic.File)]);
         int micIdx = idx++;
         bool useBacking = kind != ExportKind.DryVocal && !e.BackingMuted;
         int backIdx = -1;
@@ -102,13 +118,27 @@ public static class ExportBuilder
             args.AddRange(["-i", s.PathOf(s.Backing.File)]);
             backIdx = idx++;
         }
+        int pitchIdx = -1;
+        if (hasPitchPipe)
+        {
+            args.AddRange([
+                "-f", "rawvideo", "-pix_fmt", "bgra",
+                "-s", $"{pitchStrip!.Width}x{pitchStrip.Height}",
+                "-r", pitchStrip.Fps.ToString(CultureInfo.InvariantCulture),
+                "-i", "pipe:0",
+            ]);
+            pitchIdx = idx++;
+        }
 
         var fg = new List<string>();
         string layout = kind == ExportKind.DryVocal ? "mono" : "stereo";
         string Labels(string p) => string.Concat(Enumerable.Range(0, n).Select(i => $"[{p}{i}]"));
 
         // Shared pre-processing, then one branch per kept segment.
-        fg.Add($"[{micIdx}:a]{MicPan(e.MicChannel, s.Mic.Channels, layout)},aresample=48000,{Volume(e.VocalGainDb)},asplit={n}{Labels("vi")}");
+        string micPrep = usePolishedFile
+            ? $"aformat=channel_layouts={layout}"
+            : MicPan(e.MicChannel, s.Mic.Channels, layout);
+        fg.Add($"[{micIdx}:a]{micPrep},aresample=48000,{Volume(e.VocalGainDb)},asplit={n}{Labels("vi")}");
         if (useBacking)
             fg.Add($"[{backIdx}:a]aformat=channel_layouts=stereo,aresample=48000,{Volume(e.BackingGainDb)},asplit={n}{Labels("bi")}");
         if (videoIdx >= 0)
@@ -139,10 +169,18 @@ public static class ExportBuilder
         }
 
         string limiter = $"alimiter=limit={F(settings.LimiterCeiling)}:level=false:latency=true";
+        string finalVideoLabel = "[vout]";
         if (videoIdx >= 0)
         {
             string pairs = string.Concat(Enumerable.Range(0, n).Select(i => $"[xs{i}][as{i}]"));
             fg.Add($"{pairs}concat=n={n}:v=1:a=1[vout][acat]");
+            if (pitchIdx >= 0)
+            {
+                // Dedicated pitch strip stacked directly below video (never covers bottom lyrics).
+                fg.Add($"[{pitchIdx}:v]format=yuv420p[pstrip]");
+                fg.Add("[vout][pstrip]vstack=inputs=2:shortest=1[vstacked]");
+                finalVideoLabel = "[vstacked]";
+            }
         }
         else
         {
@@ -153,7 +191,7 @@ public static class ExportBuilder
 
         if (videoIdx >= 0)
         {
-            args.AddRange(["-map", "[vout]", "-map", "[aout]",
+            args.AddRange(["-map", finalVideoLabel, "-map", "[aout]",
                 "-c:v", "libx264", "-preset", settings.VideoPreset, "-crf", settings.VideoCrf.ToString(CultureInfo.InvariantCulture),
                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", $"{settings.AudioBitrateK}k", "-ar", "48000",
                 "-movflags", "+faststart"]);

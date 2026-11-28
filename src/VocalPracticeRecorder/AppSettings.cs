@@ -20,6 +20,8 @@ public sealed class AppSettings
     public bool SidebarOpen { get; set; }
     public bool PitchPanelOpen { get; set; }
     public double PitchPanelHeight { get; set; } = 156;
+    public bool EditorPitchOverlay { get; set; }
+    public bool ExportBurnPitch { get; set; }
     public bool TopmostInCapture { get; set; } = true;
     public int Fps { get; set; } = 20;
     public int MaxHeight { get; set; } = 720;
