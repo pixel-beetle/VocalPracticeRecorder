@@ -53,7 +53,7 @@ internal static class Snapshot
         var center = SamplePixel(trueBmp, (int)(hole.X + hole.Width / 2), (int)(hole.Y + hole.Height / 2));
         var corner = SamplePixel(trueBmp, (int)(hole.X + 2), (int)(hole.Y + 2));
         var topBarPx = SamplePixel(trueBmp, trueBmp.PixelWidth / 2, 20);
-        var framePx = SamplePixel(trueBmp, trueBmp.PixelWidth - 3, trueBmp.PixelHeight / 2);
+        var framePx = SamplePixel(trueBmp, trueBmp.PixelWidth - 2, trueBmp.PixelHeight / 2);
         int backdrop = Native.GetBackdropType(w);
         Log.Info($"snapshot {label}: holeCenterA={center.A} holeCornerA={corner.A} topBarA={topBarPx.A} frameA={framePx.A} backdrop={backdrop}");
         if (center.A != 0 || corner.A != 0)
@@ -153,7 +153,7 @@ internal static class Snapshot
         var rootEl = (FrameworkElement)win.Content;
         // Assert idle frame is distinctly blue (easy to spot over dark browsers).
         var idleTrue = RenderTrueAlpha(rootEl, 1);
-        var idleFramePx = SamplePixel(idleTrue, idleTrue.PixelWidth - 3, idleTrue.PixelHeight / 2);
+        var idleFramePx = SamplePixel(idleTrue, idleTrue.PixelWidth - 2, idleTrue.PixelHeight / 2);
         if (idleFramePx.B <= idleFramePx.R + 50)
             throw new InvalidOperationException($"Idle frame should be clearly blue over dark browsers, got RGB=({idleFramePx.R},{idleFramePx.G},{idleFramePx.B})");
 

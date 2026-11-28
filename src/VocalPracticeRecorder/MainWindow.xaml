@@ -12,7 +12,7 @@
     </Window.Resources>
 
     <!-- Distinct idle blue (or red when recording) outline keeps the window header visible over dark browsers. -->
-    <Border x:Name="OuterFrame" BorderBrush="{StaticResource FrameIdleBrush}" BorderThickness="1.5" Background="{x:Null}">
+    <Border x:Name="OuterFrame" BorderBrush="{StaticResource FrameIdleBrush}" BorderThickness="1" Background="{x:Null}">
         <Grid x:Name="RootGrid">
             <Grid.RowDefinitions>
                 <RowDefinition Height="48" />
@@ -292,10 +292,12 @@
                         <RowDefinition x:Name="PitchRow" Height="0" />
                     </Grid.RowDefinitions>
 
-                    <!-- 6px opaque frame matching the 6px resize zone; null background = alpha 0 click-through hole -->
-                    <Border x:Name="ViewportFrame" Grid.Row="0" BorderBrush="{StaticResource FrameIdleBrush}" BorderThickness="6,3,6,6"
+                    <!-- Crisp 2px visible frame (+ 1px OuterFrame = 3px visible) + 3px alpha=1 invisible grip = effortless 6px resize edge; null hole = alpha 0 click-through -->
+                    <Border x:Name="ViewportFrame" Grid.Row="0" BorderBrush="{StaticResource FrameIdleBrush}" BorderThickness="2"
                             Background="{x:Null}">
-                        <Grid x:Name="CaptureViewport" Background="{x:Null}" />
+                        <Border x:Name="ResizeGripFrame" BorderBrush="#01000000" BorderThickness="3,0,3,3" Background="{x:Null}">
+                            <Grid x:Name="CaptureViewport" Background="{x:Null}" />
+                        </Border>
                     </Border>
 
                     <!-- Horizontal resize splitter between viewfinder and pitch drawer -->

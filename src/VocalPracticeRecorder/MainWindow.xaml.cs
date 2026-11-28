@@ -305,7 +305,8 @@ public partial class MainWindow : Window
 
         bool canOutward = changed && resizeOutward && _loaded && !IsEditorOpen && WindowState == WindowState.Normal;
         var dpi = VisualTreeHelper.GetDpi(this);
-        // Collapsed: ViewportFrame.Bottom=6; Expanded: ViewportFrame.Bottom=3 + PitchSplitter=3 + PitchRow=H -> exact delta = H.
+        // Collapsed: ResizeGripFrame.Bottom=3 + ViewportFrame.Bottom=2 + Outer=1 = 6;
+        // Expanded:  ResizeGripFrame.Bottom=0 + ViewportFrame.Bottom=2 + PitchSplitter=3 + PitchRow=H + Outer=1 = 6 + H -> exact delta = H.
         int panelPx = (int)Math.Round(_pitchPanelHeight * dpi.DpiScaleY);
         double targetWindowHeightDip = Height;
 
@@ -336,7 +337,7 @@ public partial class MainWindow : Window
         PitchChevron.Data = Geometry.Parse(open ? "M1,4.5 L4,1.5 L7,4.5" : "M1,1.5 L4,4.5 L7,1.5");
         PitchPanelBorder.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         PitchSplitter.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-        ViewportFrame.BorderThickness = open ? new Thickness(6, 3, 6, 3) : new Thickness(6, 3, 6, 6);
+        ResizeGripFrame.BorderThickness = open ? new Thickness(3, 0, 3, 0) : new Thickness(3, 0, 3, 3);
 
         UpdatePitchMaxHeight(targetWindowHeightDip);
         PitchRow.MinHeight = open ? PitchMinH : 0;
