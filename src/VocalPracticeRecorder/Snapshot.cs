@@ -241,6 +241,16 @@ internal static class Snapshot
                 if (vg.ActualWidth < 80 || bg.ActualWidth < 80)
                     throw new InvalidOperationException($"Slider squeezed too narrow: vocal={vg.ActualWidth:0}px backing={bg.ActualWidth:0}px");
 
+                // Invariant: Play & Export buttons must share our unified studio cobalt accent (never leak Windows system pink).
+                foreach (var btnName in new[] { "PlayButton", "ExportButton" })
+                {
+                    var btn = (FrameworkElement)ed.FindName(btnName);
+                    var br = btn.TransformToAncestor(rootEl).TransformBounds(new Rect(0, 0, btn.ActualWidth, btn.ActualHeight));
+                    var bp = SamplePixel(edTrue, (int)(br.X + 4), (int)(br.Y + 4));
+                    if (bp.B <= bp.R + 40)
+                        throw new InvalidOperationException($"{btnName} leaked non-cobalt accent color: RGB=({bp.R},{bp.G},{bp.B})");
+                }
+
                 Save(edTrue, Path.Combine(outDir, "6-editor.png"));
                 var full = RenderTrueAlpha(rootEl, 2);
                 Crop(full, rootEl, topBar, Path.Combine(outDir, "7-topbar-editor-2x.png"));

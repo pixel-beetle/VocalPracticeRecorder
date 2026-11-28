@@ -144,8 +144,8 @@
 
                     <!-- Middle B: Editor top controls (back + title + take meta + star) -->
                     <DockPanel x:Name="EditorTopBar" Grid.Column="1" VerticalAlignment="Center" Visibility="Collapsed" Margin="0,0,8,0">
-                        <Button x:Name="BackToCaptureButton" DockPanel.Dock="Left" Content="← 录制" Height="30" Padding="10,0"
-                                Margin="0,0,10,0" Click="OnBackToCapture" ToolTip="返回录制取景框" />
+                        <Button x:Name="BackToCaptureButton" DockPanel.Dock="Left" Content="← 录制" Style="{StaticResource GhostToolButton}"
+                                Height="30" Padding="10,0" Margin="0,0,10,0" Click="OnBackToCapture" ToolTip="返回录制取景框" />
                         <ToggleButton x:Name="EditorStarButton" DockPanel.Dock="Right" Style="{StaticResource TopToggleButton}"
                                       Content="☆" FontSize="15" ToolTip="标为最佳" Click="OnEditorStar" Margin="6,0,0,0" />
                         <TextBlock x:Name="EditorTakeMeta" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="10,0,0,0"
@@ -233,6 +233,7 @@
                                    Foreground="{StaticResource SubtleTextBrush}" Visibility="Collapsed" />
                         <ListBox x:Name="TakesList" Grid.Row="1" ItemsSource="{Binding Source={StaticResource TakesView}}" BorderThickness="0"
                                  Background="Transparent" SelectionChanged="OnTakeSelected" Margin="4,2,4,6"
+                                 ItemContainerStyle="{StaticResource SidebarTakeItemStyle}"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizingWhenGrouping="True">
                             <ListBox.GroupStyle>
                                 <GroupStyle>

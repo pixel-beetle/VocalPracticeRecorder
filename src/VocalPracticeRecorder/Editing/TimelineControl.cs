@@ -49,21 +49,21 @@ public sealed class TimelineControl : FrameworkElement
     private const double HandleHit = 7;
     private const int Rate = SessionAudio.Rate;
 
-    private static readonly Brush BgBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x1C, 0x1D, 0x21)));
-    private static readonly Brush LaneBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x24, 0x26, 0x2B)));
-    private static readonly Brush RulerBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x2E, 0x30, 0x36)));
-    private static readonly Brush TextBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xA8, 0xAD, 0xB5)));
-    private static readonly Brush OutBrush = Frozen(new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)));
-    private static readonly Pen VocalPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x3B, 0xA8, 0xF5))), 1));
-    private static readonly Pen VocalDimPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x4A, 0x3B, 0xA8, 0xF5))), 1));
-    private static readonly Pen BackPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x9B, 0x7B, 0xF0))), 1));
-    private static readonly Pen PitchGridPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x2A, 0xFF, 0xFF, 0xFF))), 0.75));
-    private static readonly Pen PitchInTunePen = MakeRoundPen(Color.FromRgb(0x3E, 0xCF, 0x8E), 1.8);
-    private static readonly Pen PitchNearPen = MakeRoundPen(Color.FromRgb(0xF5, 0xB7, 0x3B), 1.8);
-    private static readonly Pen PitchOffPen = MakeRoundPen(Color.FromRgb(0xF0, 0x64, 0x69), 1.8);
-    private static readonly Brush PitchInTuneBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x3E, 0xCF, 0x8E)));
-    private static readonly Brush PitchNearBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xF5, 0xB7, 0x3B)));
-    private static readonly Brush PitchOffBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xF0, 0x64, 0x69)));
+    private static readonly Brush BgBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x15, 0x18, 0x1E)));
+    private static readonly Brush LaneBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x1C, 0x1F, 0x26)));
+    private static readonly Brush RulerBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x23, 0x27, 0x30)));
+    private static readonly Brush TextBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x9B, 0xA3, 0xB0)));
+    private static readonly Brush OutBrush = Frozen(new SolidColorBrush(Color.FromArgb(175, 10, 12, 16)));
+    private static readonly Pen VocalPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x4A, 0xA3, 0xF0))), 1));
+    private static readonly Pen VocalDimPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x4A, 0x4A, 0xA3, 0xF0))), 1));
+    private static readonly Pen BackPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x96, 0x7A, 0xE6))), 1));
+    private static readonly Pen PitchGridPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF))), 0.75));
+    private static readonly Pen PitchInTunePen = MakeRoundPen(Color.FromRgb(0x38, 0xC6, 0x88), 1.8);
+    private static readonly Pen PitchNearPen = MakeRoundPen(Color.FromRgb(0xE8, 0xAE, 0x38), 1.8);
+    private static readonly Pen PitchOffPen = MakeRoundPen(Color.FromRgb(0xE4, 0x5F, 0x64), 1.8);
+    private static readonly Brush PitchInTuneBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x38, 0xC6, 0x88)));
+    private static readonly Brush PitchNearBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xE8, 0xAE, 0x38)));
+    private static readonly Brush PitchOffBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xE4, 0x5F, 0x64)));
     private static readonly Typeface MonoSemiBold = new(new FontFamily("Consolas"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
     private static readonly Pen TickPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0x55, 0x59, 0x60))), 1));
 

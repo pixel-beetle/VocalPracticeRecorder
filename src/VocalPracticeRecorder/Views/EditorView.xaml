@@ -62,22 +62,22 @@
             <DockPanel Margin="0,8,0,0" LastChildFill="False">
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="人声" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{StaticResource VocalBrush}" Margin="0,0,6,0" />
+                               Foreground="{StaticResource VocalBrush}" Margin="0,0,8,0" />
                     <Slider x:Name="VocalGain" Width="104" MinWidth="84" Minimum="-24" Maximum="18" TickFrequency="1"
-                            IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                            IsSnapToTickEnabled="True" VerticalAlignment="Center" Foreground="{StaticResource VocalBrush}"
                             ValueChanged="OnGainChanged" Thumb.DragStarted="OnSliderDragStarted" />
                     <TextBlock x:Name="VocalGainText" Width="38" VerticalAlignment="Center" TextAlignment="Right"
-                               FontFamily="Consolas" FontSize="11.5" Foreground="{StaticResource SubtleTextBrush}" />
+                               FontFamily="Consolas" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
 
-                    <Rectangle Width="1" Height="14" Fill="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="12,0" />
+                    <Rectangle Width="1" Height="14" Fill="{StaticResource BorderSubtleBrush}" Margin="12,0" />
 
                     <TextBlock Text="伴奏" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{StaticResource BackingBrush}" Margin="0,0,6,0" />
+                               Foreground="{StaticResource BackingBrush}" Margin="0,0,8,0" />
                     <Slider x:Name="BackingGain" Width="104" MinWidth="84" Minimum="-30" Maximum="12" TickFrequency="1"
-                            IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                            IsSnapToTickEnabled="True" VerticalAlignment="Center" Foreground="{StaticResource BackingBrush}"
                             ValueChanged="OnGainChanged" Thumb.DragStarted="OnSliderDragStarted" />
                     <TextBlock x:Name="BackingGainText" Width="38" VerticalAlignment="Center" TextAlignment="Right"
-                               FontFamily="Consolas" FontSize="11.5" Foreground="{StaticResource SubtleTextBrush}" />
+                               FontFamily="Consolas" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
                     <ToggleButton x:Name="BackingMute" Style="{StaticResource TopToggleButton}" Width="28" Height="26"
                                   Margin="4,0,0,0" Click="OnMuteChanged" ToolTip="静音伴奏">
                         <Path x:Name="BackingMuteGlyph"
@@ -109,7 +109,7 @@
 
             <!-- Tier 2b: Collapsible Alignment, Light Polish & Mic Channel Drawer (hidden by default) -->
             <Border x:Name="TuneDrawer" Visibility="Collapsed" Margin="0,6,0,0" Padding="10,7" CornerRadius="6"
-                    Background="#10FFFFFF" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1">
+                    Background="{StaticResource SurfaceElevatedBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1">
                 <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"
                                 ToolTip="人声偏移：键盘 ← → ±10ms，Shift ±50ms">
@@ -122,7 +122,7 @@
                         <Button Content="重新对齐" Click="OnAutoAlign" Style="{StaticResource GhostToolButton}" Margin="8,0,0,0"
                                 ToolTip="重新执行自动对齐" />
                         <TextBlock x:Name="AlignBadge" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11.5"
-                                   Foreground="{StaticResource SubtleTextBrush}" />
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
                     </StackPanel>
 
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
@@ -130,7 +130,7 @@
                                       Content="轻润色" Margin="0,0,10,0"
                                       ToolTip="80Hz 去喷麦 + 轻度动态平滑 + 自然空间混响（默认关闭，试听与导出一致）" />
                         <TextBlock Text="通道" VerticalAlignment="Center" FontSize="12"
-                                   Foreground="{StaticResource SubtleTextBrush}" Margin="0,0,6,0" />
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,6,0" />
                         <ComboBox x:Name="ChannelBox" MinWidth="102" Height="28" Padding="8,0,22,0"
                                   VerticalContentAlignment="Center" FontSize="12" SelectionChanged="OnChannelChanged" ToolTip="麦克风输入通道">
                             <ComboBoxItem Content="通道 1 (左)" />
@@ -143,7 +143,7 @@
 
             <!-- Tier 3: Clean Export Action Bar -->
             <Border Margin="0,8,0,0" Padding="10,7" CornerRadius="6" BorderThickness="1"
-                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" Background="#08FFFFFF">
+                    BorderBrush="{StaticResource BorderSubtleBrush}" Background="{StaticResource SurfaceElevatedBrush}">
                 <DockPanel>
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                         <ComboBox x:Name="ExportKindBox" MinWidth="126" Height="30" Padding="10,0,28,0"
@@ -153,11 +153,11 @@
                             <ComboBoxItem Content="混音 MP3" />
                             <ComboBoxItem Content="干声 MP3" />
                         </ComboBox>
-                        <CheckBox x:Name="BurnPitchCheck" Content="附音高线" VerticalAlignment="Center" Margin="8,0,0,0"
+                        <CheckBox x:Name="BurnPitchCheck" Content="附音高线" VerticalAlignment="Center" Margin="10,0,0,0"
                                   FontSize="12" Click="OnBurnPitchChanged"
                                   ToolTip="导出 MP4 时在视频正下方拼接一条独立暗色音高曲线栏（不遮挡原画面歌词）" />
                         <Button x:Name="ExportButton" Content="导出" Click="OnExport" ToolTip="导出 (Ctrl+E)"
-                                Style="{StaticResource AccentButtonStyle}" Height="30" Padding="16,0" Margin="8,0,0,0" />
+                                Style="{StaticResource PrimaryButton}" Height="30" Padding="16,0" Margin="10,0,0,0" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
                         <Button x:Name="RevealButton" Content="打开位置" Style="{StaticResource GhostToolButton}" Click="OnReveal" IsEnabled="False" />

@@ -18,9 +18,11 @@ public sealed class RenameDialog : Window
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        _box = new TextBox { Text = current, Margin = new Thickness(0, 0, 0, 10) };
+        Background = (System.Windows.Media.Brush)Application.Current.FindResource("SurfaceChromeBrush");
+        Foreground = (System.Windows.Media.Brush)Application.Current.FindResource("TextPrimaryBrush");
+        _box = new TextBox { Text = current, Margin = new Thickness(0, 0, 0, 12) };
         _all = new CheckBox { Content = $"同时修改这首歌的全部 {groupCount} 遍", IsChecked = true, Visibility = groupCount > 1 ? Visibility.Visible : Visibility.Collapsed };
-        var ok = new Button { Content = "确定", IsDefault = true, MinWidth = 80, Margin = new Thickness(0, 0, 8, 0) };
+        var ok = new Button { Content = "确定", IsDefault = true, MinWidth = 80, Margin = new Thickness(0, 0, 8, 0), Style = (Style)Application.Current.FindResource("PrimaryButton") };
         ok.Click += (_, _) => DialogResult = true;
         var cancel = new Button { Content = "取消", IsCancel = true, MinWidth = 80 };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
